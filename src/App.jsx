@@ -102,6 +102,196 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── CropModal ──────────────────────────────────────────────────────────────────
+function CropModal({ src, onCrop, onClose }) {
+  const [loaded,   setLoaded]   = useState(false);
+  const [natSize,  setNatSize]  = useState({ w: 1, h: 1 });
+  const [dispSize, setDispSize] = useState({ w: 360, h: 240 });
+  const [box,      setBox]      = useState({ x: 0, y: 0, w: 150, h: 150 });
+  const [drag,     setDrag]     = useState(null);
+  const canvasRef = useRef();
+  const imgRef    = useRef(null);
+  const DMAX = 360;
+
+  // Load image & init crop box
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(DMAX / img.naturalWidth, DMAX / img.naturalHeight, 1);
+      const w = Math.round(img.naturalWidth  * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      imgRef.current = img;
+      setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
+      setDispSize({ w, h });
+      const sz = Math.round(Math.min(w, h) * 0.78);
+      setBox({ x: Math.round((w - sz) / 2), y: Math.round((h - sz) / 2), w: sz, h: sz });
+      setLoaded(true);
+    };
+    img.src = src;
+  }, [src]);
+
+  // Draw canvas overlay
+  useEffect(() => {
+    if (!loaded || !canvasRef.current || !imgRef.current) return;
+    const canvas = canvasRef.current;
+    canvas.width  = dispSize.w;
+    canvas.height = dispSize.h;
+    const ctx = canvas.getContext("2d");
+    const img = imgRef.current;
+    const sx  = natSize.w / dispSize.w;
+    const sy  = natSize.h / dispSize.h;
+
+    // Dimmed full image
+    ctx.globalAlpha = 0.32;
+    ctx.drawImage(img, 0, 0, dispSize.w, dispSize.h);
+    ctx.globalAlpha = 1;
+
+    // Bright crop region
+    ctx.drawImage(img,
+      box.x * sx, box.y * sy, box.w * sx, box.h * sy,
+      box.x, box.y, box.w, box.h
+    );
+
+    // Border
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
+
+    // Rule-of-thirds grid
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.lineWidth = 0.5;
+    for (let i = 1; i < 3; i++) {
+      const gx = box.x + (box.w * i) / 3;
+      const gy = box.y + (box.h * i) / 3;
+      ctx.beginPath(); ctx.moveTo(gx, box.y);    ctx.lineTo(gx, box.y + box.h); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(box.x, gy);    ctx.lineTo(box.x + box.w, gy); ctx.stroke();
+    }
+
+    // Corner handles
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur  = 4;
+    ctx.fillStyle   = "#ffffff";
+    const hs = 8;
+    [
+      [box.x,             box.y            ],
+      [box.x + box.w - hs, box.y           ],
+      [box.x,              box.y + box.h - hs],
+      [box.x + box.w - hs, box.y + box.h - hs],
+    ].forEach(([cx, cy]) => ctx.fillRect(cx, cy, hs, hs));
+    ctx.shadowBlur = 0;
+
+    // Resize indicator (SE corner)
+    ctx.strokeStyle = "#60a5fa";
+    ctx.lineWidth = 2;
+    const r = 12;
+    ctx.beginPath();
+    ctx.moveTo(box.x + box.w - r,     box.y + box.h - 2);
+    ctx.lineTo(box.x + box.w - 2,     box.y + box.h - 2);
+    ctx.lineTo(box.x + box.w - 2,     box.y + box.h - r);
+    ctx.stroke();
+  }, [loaded, box, dispSize, natSize]);
+
+  // Mouse down: determine action
+  const onMouseDown = (e) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const px = (e.clientX - rect.left) * (canvas.width  / rect.width);
+    const py = (e.clientY - rect.top)  * (canvas.height / rect.height);
+    const hit = 16; // resize hit area
+    if (px >= box.x + box.w - hit && py >= box.y + box.h - hit) {
+      setDrag({ type:"resize", sx:px, sy:py, sb:{ ...box } });
+    } else if (px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h) {
+      setDrag({ type:"move",   sx:px, sy:py, sb:{ ...box } });
+    }
+  };
+
+  // Global mouse move / up
+  useEffect(() => {
+    if (!drag) return;
+    const getPos = (e) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return { x: 0, y: 0 };
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (canvas.width  / rect.width),
+        y: (e.clientY - rect.top)  * (canvas.height / rect.height),
+      };
+    };
+    const onMove = (e) => {
+      const p = getPos(e);
+      const dx = p.x - drag.sx;
+      const dy = p.y - drag.sy;
+      if (drag.type === "move") {
+        setBox({
+          ...drag.sb,
+          x: Math.max(0, Math.min(dispSize.w - drag.sb.w, drag.sb.x + dx)),
+          y: Math.max(0, Math.min(dispSize.h - drag.sb.h, drag.sb.y + dy)),
+        });
+      } else {
+        const delta  = Math.max(dx, dy);
+        const maxSz  = Math.min(dispSize.w - drag.sb.x, dispSize.h - drag.sb.y);
+        const newSz  = Math.max(40, Math.min(maxSz, drag.sb.w + delta));
+        setBox({ ...drag.sb, w: newSz, h: newSz });
+      }
+    };
+    const onUp = () => setDrag(null);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [drag, dispSize]);
+
+  // Apply crop via offscreen canvas
+  const confirm = () => {
+    const OUT = 512;
+    const c   = document.createElement("canvas");
+    c.width = OUT; c.height = OUT;
+    const ctx = c.getContext("2d");
+    const sx  = natSize.w / dispSize.w;
+    const sy  = natSize.h / dispSize.h;
+    ctx.drawImage(imgRef.current, box.x*sx, box.y*sy, box.w*sx, box.h*sy, 0, 0, OUT, OUT);
+    onCrop(c.toDataURL("image/png"));
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-bold text-slate-800">✂️ トリミング</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">
+          枠内ドラッグで移動 ／ 右下角（青線）ドラッグでサイズ変更
+        </p>
+        <div className="flex justify-center mb-4 rounded-xl overflow-hidden bg-slate-900 min-h-24">
+          {loaded ? (
+            <canvas
+              ref={canvasRef}
+              onMouseDown={onMouseDown}
+              className="max-w-full cursor-crosshair select-none"
+            />
+          ) : (
+            <div className="h-24 flex items-center justify-center text-slate-400 text-sm w-full">
+              読み込み中...
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+            キャンセル
+          </button>
+          <button onClick={confirm} disabled={!loaded}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 transition-colors">
+            適用する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── AppIcon ────────────────────────────────────────────────────────────────────
 function AppIcon({ logo, size="md" }) {
   const wh = size==="lg" ? "w-16 h-16" : size==="sm" ? "w-7 h-7" : "w-9 h-9";
@@ -155,93 +345,115 @@ function LoginScreen({ onLogin, logo }) {
 
 // ── SettingsModal ──────────────────────────────────────────────────────────────
 function SettingsModal({ settings, onSave, onClose }) {
-  const [logo,    setLogo]    = useState(settings.logo    || null);
-  const [favicon, setFavicon] = useState(settings.favicon || null);
+  const [logo,       setLogo]       = useState(settings.logo    || null);
+  const [favicon,    setFavicon]    = useState(settings.favicon || null);
+  const [cropSrc,    setCropSrc]    = useState(null);
+  const [cropTarget, setCropTarget] = useState(null); // "logo" | "favicon"
   const logoRef    = useRef();
   const faviconRef = useRef();
 
-  const readFile = (file, setter) => {
+  const openCrop = (file, target) => {
     const r = new FileReader();
-    r.onload = e => setter(e.target.result);
+    r.onload = e => { setCropSrc(e.target.result); setCropTarget(target); };
     r.readAsDataURL(file);
   };
 
+  const onCropDone = (dataUrl) => {
+    if (cropTarget === "logo")    setLogo(dataUrl);
+    if (cropTarget === "favicon") setFavicon(dataUrl);
+    setCropSrc(null); setCropTarget(null);
+  };
+
+  const UploadBtn = ({ inputRef, target, accept }) => (
+    <label className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors">
+      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+      </svg>
+      アップロード &amp; トリミング
+      <input ref={inputRef} type="file" accept={accept || "image/*"} className="hidden"
+        onChange={e => e.target.files[0] && openCrop(e.target.files[0], target)} />
+    </label>
+  );
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-base font-bold text-slate-800">⚙️ システム設定</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
-        </div>
-
-        {/* Logo */}
-        <div className="mb-6">
-          <p className="text-sm font-semibold text-slate-700 mb-3">アプリロゴ</p>
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
-              {logo
-                ? <img src={logo} alt="logo" className="w-full h-full object-contain" />
-                : <span className="text-xs text-slate-400 text-center px-1">未設定</span>}
-            </div>
-            <div className="flex flex-col gap-2">
-              <label className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                画像をアップロード
-                <input ref={logoRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => e.target.files[0] && readFile(e.target.files[0], setLogo)} />
-              </label>
-              {logo && (
-                <button onClick={() => setLogo(null)} className="text-xs text-rose-500 hover:text-rose-700 text-left">
-                  ロゴを削除
-                </button>
-              )}
-            </div>
+    <>
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-base font-bold text-slate-800">⚙️ システム設定</h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
           </div>
-          <p className="text-xs text-slate-400 mt-2">PNG / JPEG / SVG / ICO 対応。ログイン画面・ヘッダーに反映されます。</p>
-        </div>
 
-        {/* Favicon */}
-        <div className="mb-6">
-          <p className="text-sm font-semibold text-slate-700 mb-3">ファビコン（ブラウザタブアイコン）</p>
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
-              {favicon
-                ? <img src={favicon} alt="favicon" className="w-8 h-8 object-contain" />
-                : <span className="text-xs text-slate-400">—</span>}
+          {/* Logo */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-slate-700 mb-3">アプリロゴ</p>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
+                {logo
+                  ? <img src={logo} alt="logo" className="w-full h-full object-contain" />
+                  : <span className="text-xs text-slate-400 text-center px-1">未設定</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <UploadBtn inputRef={logoRef} target="logo" />
+                {logo && (
+                  <button onClick={() => setLogo(null)}
+                    className="text-xs text-rose-500 hover:text-rose-700 text-left">
+                    ロゴを削除
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <label className="inline-flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors">
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                </svg>
-                画像をアップロード
-                <input ref={faviconRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => e.target.files[0] && readFile(e.target.files[0], setFavicon)} />
-              </label>
-              {favicon && (
-                <button onClick={() => setFavicon(null)} className="text-xs text-rose-500 hover:text-rose-700 text-left">
-                  ファビコンを削除
-                </button>
-              )}
-            </div>
+            <p className="text-xs text-slate-400 mt-2">
+              PNG / JPEG 対応。アップロード後にトリミングできます。ログイン画面・ヘッダーに反映されます。
+            </p>
           </div>
-          <p className="text-xs text-slate-400 mt-2">ICO / PNG 推奨。保存するとブラウザタブのアイコンに即時反映されます。</p>
-        </div>
 
-        <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
-          <button onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-            キャンセル
-          </button>
-          <button onClick={() => { onSave({ logo, favicon }); onClose(); }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
-            保存する
-          </button>
+          {/* Favicon */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-slate-700 mb-3">ファビコン（ブラウザタブアイコン）</p>
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
+                {favicon
+                  ? <img src={favicon} alt="favicon" className="w-8 h-8 object-contain" />
+                  : <span className="text-xs text-slate-400">—</span>}
+              </div>
+              <div className="flex flex-col gap-2">
+                <UploadBtn inputRef={faviconRef} target="favicon" />
+                {favicon && (
+                  <button onClick={() => setFavicon(null)}
+                    className="text-xs text-rose-500 hover:text-rose-700 text-left">
+                    ファビコンを削除
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-slate-400 mt-2">
+              ICO / PNG 推奨。保存するとブラウザタブのアイコンに即時反映されます。
+            </p>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
+            <button onClick={onClose}
+              className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+              キャンセル
+            </button>
+            <button onClick={() => { onSave({ logo, favicon }); onClose(); }}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+              保存する
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {cropSrc && (
+        <CropModal
+          src={cropSrc}
+          onCrop={onCropDone}
+          onClose={() => { setCropSrc(null); setCropTarget(null); }}
+        />
+      )}
+    </>
   );
 }
 
