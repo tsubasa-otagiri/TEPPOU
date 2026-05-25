@@ -102,6 +102,44 @@ function StatusBadge({ status }) {
   );
 }
 
+// ── White background removal (BFS flood fill from edges) ──────────────────────
+function removeWhiteBg(sourceImg, threshold = 238) {
+  const canvas = document.createElement("canvas");
+  canvas.width  = sourceImg.naturalWidth;
+  canvas.height = sourceImg.naturalHeight;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(sourceImg, 0, 0);
+  const { width, height } = canvas;
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const d = imgData.data;
+  const visited = new Uint8Array(width * height);
+  const queue = [];
+
+  // Seed from all 4 edges
+  for (let x = 0; x < width;  x++) { queue.push(x); queue.push((height - 1) * width + x); }
+  for (let y = 1; y < height - 1; y++) { queue.push(y * width); queue.push(y * width + width - 1); }
+
+  let qi = 0;
+  while (qi < queue.length) {
+    const p = queue[qi++];
+    if (visited[p]) continue;
+    visited[p] = 1;
+    const i = p * 4;
+    const x = p % width, y = (p / width) | 0;
+    const flood =
+      d[i + 3] === 0 ||                                          // already transparent
+      (d[i] >= threshold && d[i + 1] >= threshold && d[i + 2] >= threshold); // white/near-white
+    if (!flood) continue;
+    d[i] = d[i + 1] = d[i + 2] = d[i + 3] = 0; // make transparent
+    if (x > 0)          queue.push(p - 1);
+    if (x < width - 1)  queue.push(p + 1);
+    if (y > 0)          queue.push(p - width);
+    if (y < height - 1) queue.push(p + width);
+  }
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
 // ── CropModal ──────────────────────────────────────────────────────────────────
 function CropModal({ src, onCrop, onClose }) {
   const [loaded,   setLoaded]   = useState(false);
@@ -113,19 +151,25 @@ function CropModal({ src, onCrop, onClose }) {
   const imgRef    = useRef(null);
   const DMAX = 360;
 
-  // Load image & init crop box
+  // Load image → remove white BG → init crop box
   useEffect(() => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(DMAX / img.naturalWidth, DMAX / img.naturalHeight, 1);
-      const w = Math.round(img.naturalWidth  * scale);
-      const h = Math.round(img.naturalHeight * scale);
-      imgRef.current = img;
-      setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
-      setDispSize({ w, h });
-      const sz = Math.round(Math.min(w, h) * 0.78);
-      setBox({ x: Math.round((w - sz) / 2), y: Math.round((h - sz) / 2), w: sz, h: sz });
-      setLoaded(true);
+      // Apply white background removal at full resolution
+      const cleanCanvas = removeWhiteBg(img);
+      const cleanImg = new Image();
+      cleanImg.onload = () => {
+        const scale = Math.min(DMAX / img.naturalWidth, DMAX / img.naturalHeight, 1);
+        const w = Math.round(img.naturalWidth  * scale);
+        const h = Math.round(img.naturalHeight * scale);
+        imgRef.current = cleanImg;
+        setNatSize({ w: img.naturalWidth, h: img.naturalHeight });
+        setDispSize({ w, h });
+        const sz = Math.round(Math.min(w, h) * 0.78);
+        setBox({ x: Math.round((w - sz) / 2), y: Math.round((h - sz) / 2), w: sz, h: sz });
+        setLoaded(true);
+      };
+      cleanImg.src = cleanCanvas.toDataURL("image/png");
     };
     img.src = src;
   }, [src]);
