@@ -973,6 +973,25 @@ function ImportModal({ onImport, onClose }) {
 }
 
 // ── DuplicateModal ─────────────────────────────────────────────────────────────
+// ステータス優先度（低い数字ほど価値が高い → 残す候補）
+const DUPE_PRIORITY = {
+  "9.アポ獲得":1, "0.日程調整":2, "1.高確度":3, "4.商談中":4,
+  "5.メール送付":5, "6.コネクト（改）":6, "7.コネクト（無）":7,
+  "2.優先":8, "4.別担当架電":9, "4.受付カット":10,
+  "8.当社契約":11, "8.不要":12, "3.並":13,
+  "未架電":99, "":100,
+};
+const dupePrio = s => DUPE_PRIORITY[s] ?? 50;
+
+// 優先度→更新日の順でソート（先頭＝残す）
+function sortGroupForDupe(rs) {
+  return [...rs].sort((a,b) => {
+    const dp = dupePrio(a.status) - dupePrio(b.status);
+    if (dp !== 0) return dp;
+    return new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt);
+  });
+}
+
 function DuplicateModal({ records, onClean, onClose }) {
   const [step,      setStep]      = useState("select"); // "select" | "confirm"
   const [deleteSet, setDeleteSet] = useState(() => {
@@ -983,8 +1002,8 @@ function DuplicateModal({ records, onClean, onClose }) {
       (g[k] = g[k]||[]).push(r);
     });
     Object.values(g).filter(rs => rs.length > 1).forEach(rs => {
-      const sorted = [...rs].sort((a,b) => new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt));
-      sorted.slice(1).forEach(r => s.add(r.id));
+      // 先頭（最優先）を残し、残りをデフォルト削除対象に
+      sortGroupForDupe(rs).slice(1).forEach(r => s.add(r.id));
     });
     return s;
   });
@@ -997,7 +1016,7 @@ function DuplicateModal({ records, onClean, onClose }) {
     });
     return Object.values(g)
       .filter(rs => rs.length > 1)
-      .map(rs => [...rs].sort((a,b) => new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt)));
+      .map(rs => sortGroupForDupe(rs));
   })();
 
   const toggle = id => setDeleteSet(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
