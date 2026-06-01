@@ -1159,7 +1159,7 @@ function DuplicateModal({ records, onClean, onClose }) {
 }
 
 // ── RecordFormModal (shared by New & Edit) ─────────────────────────────────────
-function RecordFormModal({ initial, title, onSave, onClose }) {
+function RecordFormModal({ initial, title, onSave, onClose, onDelete }) {
   const [form, setForm] = useState({
     companyName:"", phone:"", email:"", mailFlag:"",
     hpSite:"", gbp:"", gbpSiteUrl:"", gbpManagement:"",
@@ -1267,16 +1267,26 @@ function RecordFormModal({ initial, title, onSave, onClose }) {
             </div>
           </div>
         </div>
-        <div className="flex gap-2 justify-end px-6 py-4 border-t border-slate-100 shrink-0">
-          <button onClick={onClose}
-            className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
-            キャンセル
-          </button>
-          <button onClick={() => { if (!form.companyName.trim()) return; onSave(form); onClose(); }}
-            disabled={!form.companyName.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 transition-colors">
-            保存する
-          </button>
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 shrink-0">
+          <div>
+            {onDelete && (
+              <button onClick={onDelete}
+                className="px-4 py-2 text-sm text-rose-500 hover:text-rose-700 border border-rose-200 hover:border-rose-400 hover:bg-rose-50 rounded-lg transition-colors">
+                🗑️ 削除する
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose}
+              className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+              キャンセル
+            </button>
+            <button onClick={() => { if (!form.companyName.trim()) return; onSave(form); onClose(); }}
+              disabled={!form.companyName.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 transition-colors">
+              保存する
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2100,12 +2110,8 @@ export default function App() {
                     ))}
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <button onClick={() => setEditRec(rec)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium mr-2">
+                        className="text-xs text-blue-600 hover:text-blue-800 font-medium">
                         編集
-                      </button>
-                      <button onClick={() => deleteRecord(rec.id)}
-                        className="text-xs text-rose-500 hover:text-rose-700 font-medium">
-                        削除
                       </button>
                     </td>
                   </tr>
@@ -2175,6 +2181,7 @@ export default function App() {
           title="レコード編集"
           onSave={form => saveRecord({ ...editRec, ...form })}
           onClose={() => setEditRec(null)}
+          onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
         />
       )}
     </div>
