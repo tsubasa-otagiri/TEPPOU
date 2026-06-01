@@ -1623,7 +1623,7 @@ export default function App() {
                                   : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>
                           ); })()
                         ) : col.key === "lastCallDate" && rec.lastCallDate ? (
-                          <span className="text-slate-700 text-xs">{fmtDate(rec.lastCallDate)}</span>
+                          <span className="text-slate-700 text-xs">{fmtDate(normDate(rec.lastCallDate))}</span>
                         ) : col.key === "memo" ? (
                           <span className="text-slate-600 text-xs block max-w-56 truncate" title={rec.memo||""}>
                             {rec.memo || "—"}
