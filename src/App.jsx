@@ -1509,6 +1509,7 @@ export default function App() {
   const [selected,       setSelected]       = useState(new Set());
   const [view,           setView]           = useState("list");   // "list" | "analysis"
   const [showPullList,   setShowPullList]   = useState(false);
+  const [copiedId,       setCopiedId]       = useState(null);
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -1622,6 +1623,13 @@ export default function App() {
     setRecords(p => p.filter(r => !selected.has(r.id)));
     setSelected(new Set());
   }, [selected]);
+
+  const copyCompanyName = useCallback((text, id) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 1500);
+    });
+  }, []);
 
   const cleanDuplicates = useCallback(ids => {
     const del = new Set(ids);
@@ -1902,7 +1910,22 @@ export default function App() {
                     </td>
                     {visibleDefs.map(col => (
                       <td key={col.key} className="px-3 py-2.5 whitespace-nowrap max-w-xs">
-                        {col.key === "status" ? (
+                        {col.key === "companyName" ? (
+                          <button onClick={() => copyCompanyName(rec.companyName, rec.id)}
+                            title="クリックでコピー"
+                            className={`group flex items-center gap-1 text-xs text-left w-full transition-colors
+                              ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
+                            <span className="font-medium truncate max-w-48">{rec.companyName||"—"}</span>
+                            {copiedId===rec.id
+                              ? <span className="text-green-500 text-xs shrink-0">✓</span>
+                              : <svg className="w-3 h-3 shrink-0 text-slate-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                </svg>
+                            }
+                          </button>
+                        ) : col.key === "status" ? (
                           <StatusBadge status={rec.status} />
                         ) : (col.key === "hpSite" || col.key === "gbpSiteUrl") && rec[col.key] ? (
                           <a href={rec[col.key]} target="_blank" rel="noreferrer"
