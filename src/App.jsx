@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PASSWORD   = "1111";
-const STORAGE_KEY  = "teppou_records_v2";
+const STORAGE_KEY  = "teppou_records_v3";
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE  = 100;
 
@@ -26,16 +26,37 @@ const STATUS_CFG = {
 };
 
 const ALL_COLUMNS = [
-  { key:"companyName",  label:"企業名",        required:true  },
-  { key:"phone",        label:"電話番号",       required:false },
-  { key:"email",        label:"メールアドレス", required:false },
-  { key:"url",          label:"GBP/URL",        required:false },
-  { key:"status",       label:"ステータス",     required:false },
-  { key:"assignee",     label:"担当者",         required:false },
-  { key:"lastCallDate", label:"最終架電日",     required:false },
-  { key:"nextCallDate", label:"次回架電日",     required:false },
-  { key:"callCount",    label:"架電回数",       required:false },
-  { key:"memo",         label:"メモ/情報",      required:false },
+  { key:"companyName",   label:"企業名",                              required:true  },
+  { key:"lastCallDate",  label:"架電日",                              required:false },
+  { key:"nextCallDate",  label:"次回架電日",                          required:false },
+  { key:"status",        label:"状況",                                required:false },
+  { key:"industry",      label:"業種",                                required:false },
+  { key:"leadSource",    label:"ソース",                              required:false },
+  { key:"hpSite",        label:"HPサイト",                            required:false },
+  { key:"gbp",           label:"GBP",                                 required:false },
+  { key:"phone",         label:"電話番号",                            required:false },
+  { key:"assignee",      label:"担当者",                              required:false },
+  { key:"department",    label:"部署",                                required:false },
+  { key:"absenceReason", label:"不在理由",                            required:false },
+  { key:"gbpManagement", label:"GBPの管理",                           required:false },
+  { key:"memo",          label:"簡易的な情報/次回架電時の情報メモ",    required:false },
+  { key:"storeCount",    label:"店舗数",                              required:false },
+  { key:"refusalReason", label:"断り理由",                            required:false },
+  { key:"posting",       label:"投稿",                                required:false },
+  { key:"review",        label:"口コミ",                              required:false },
+  { key:"sns",           label:"SNS",                                 required:false },
+  { key:"instagram",     label:"Insta",                               required:false },
+  { key:"line",          label:"Line",                                required:false },
+  { key:"facebook",      label:"FB",                                  required:false },
+  { key:"twitter",       label:"Twitter",                             required:false },
+  { key:"os",            label:"OS",                                  required:false },
+  { key:"mailFlag",      label:"メール",                              required:false },
+  { key:"email",         label:"メアド",                              required:false },
+  { key:"gbpSiteUrl",    label:"GBPサイトURL",                        required:false },
+];
+
+const DEFAULT_VISIBLE_COLS = [
+  "companyName","lastCallDate","nextCallDate","status","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -66,16 +87,33 @@ function mapSalesHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = h.replace(/[\s　]/g,"").toLowerCase();
-    if      (/企業名|会社名|法人名/.test(n))                      m.companyName  = i;
-    else if (/電話|tel|phone/.test(n))                            m.phone        = i;
-    else if (/メアド|メール|mail|email/.test(n))                   m.email        = i;
-    else if (/gbpサイト|url|サイト|gbp|ホームページ|hp/.test(n))   m.url          = i;
-    else if (/簡易|メモ|備考|note|コメント|情報/.test(n))           m.memo         = i;
-    else if (/担当者?名?|営業担当/.test(n))                        m.assignee     = i;
-    else if (/ステータス|状態|状況/.test(n))                       m.status       = i;
-    else if (/次回架電|次架電|コールバック/.test(n))                m.nextCallDate = i;
-    else if (/最終架電|架電日/.test(n))                            m.lastCallDate = i;
-    else if (/架電回数|コール回数/.test(n))                        m.callCount    = i;
+    if      (/企業名|会社名|法人名/.test(n))                      m.companyName   = i;
+    else if (/電話|tel|phone/.test(n))                            m.phone         = i;
+    else if (/メアド/.test(n))                                    m.email         = i;
+    else if (/^メール$/.test(n))                                  m.mailFlag      = i;
+    else if (/gbpサイト/.test(n))                                 m.gbpSiteUrl    = i;
+    else if (/gbpの管理|gbp管理/.test(n))                         m.gbpManagement = i;
+    else if (/^gbp$/.test(n))                                     m.gbp           = i;
+    else if (/^hp$|hpサイト|^hp[^a-z]/.test(n))                  m.hpSite        = i;
+    else if (/簡易|次回架電時の情報|メモ|備考|note|コメント/.test(n)) m.memo       = i;
+    else if (/担当者?名?|営業担当/.test(n))                       m.assignee      = i;
+    else if (/ステータス|状態|状況/.test(n))                      m.status        = i;
+    else if (/次回架電|次架電|コールバック/.test(n))               m.nextCallDate  = i;
+    else if (/最終架電|^架電日/.test(n))                          m.lastCallDate  = i;
+    else if (/業種/.test(n))                                      m.industry      = i;
+    else if (/ソース|リスト出所/.test(n))                         m.leadSource    = i;
+    else if (/部署|部門/.test(n))                                 m.department    = i;
+    else if (/不在理由/.test(n))                                  m.absenceReason = i;
+    else if (/店舗数|店舗/.test(n))                               m.storeCount    = i;
+    else if (/断り理由|断り/.test(n))                             m.refusalReason = i;
+    else if (/投稿/.test(n))                                      m.posting       = i;
+    else if (/口コミ|レビュー/.test(n))                           m.review        = i;
+    else if (/^sns$/.test(n))                                     m.sns           = i;
+    else if (/insta|インスタ/.test(n))                            m.instagram     = i;
+    else if (/^line$|ライン/.test(n))                             m.line          = i;
+    else if (/^fb$|facebook/.test(n))                             m.facebook      = i;
+    else if (/^twitter$|^x$|ツイッター/.test(n))                  m.twitter       = i;
+    else if (/^os$/.test(n))                                      m.os            = i;
   });
   return m;
 }
@@ -510,8 +548,8 @@ const CSV_TEMPLATES = {
   sales: {
     filename: "TEPPOU_営業リスト_フォーマット.csv",
     rows: [
-      ["企業名","電話番号","メールアドレス","GBP/URL","ステータス","担当者","最終架電日","次回架電日","架電回数","メモ/情報"],
-      ["株式会社サンプル","03-0000-0000","sample@example.com","https://example.com","未架電","山田太郎","2026-06-01","2026-06-08","1","サンプルメモ"],
+      ["架電日","次回架電日","状況","業種","ソース","企業名","HPサイト","GBP","電話番号","担当者","部署","不在理由","GBPの管理","簡易的な情報/次回架電時の情報メモ","店舗数","断り理由","投稿","口コミ","SNS","Insta","Line","FB","Twitter","OS","メール","メアド","GBPサイトURL"],
+      ["2026-06-01","2026-06-08","未架電","IT","自社リスト","株式会社サンプル","https://example.com","あり","03-0000-0000","山田太郎","営業部","","○","サンプルメモ","1","","○","★3","○","○","○","○","○","iOS","","sample@example.com","https://maps.google.com/..."],
     ],
   },
   metel: {
@@ -580,18 +618,36 @@ function ImportModal({ onImport, onClose }) {
       if (row.every(c => !c.trim())) continue;
       const company = map.companyName !== undefined ? row[map.companyName] : "";
       if (!company.trim()) { skipped++; continue; }
+      const g = (k) => map[k] !== undefined ? (row[map[k]] || "").trim() : "";
       records.push({
-        id:           genId(),
-        companyName:  company.trim(),
-        phone:        map.phone        !== undefined ? (row[map.phone]        ||"").trim() : "",
-        email:        map.email        !== undefined ? (row[map.email]        ||"").trim() : "",
-        url:          map.url          !== undefined ? (row[map.url]          ||"").trim() : "",
-        status:      (map.status       !== undefined ? (row[map.status]       ||"")        : "") || "未架電",
-        assignee:     map.assignee     !== undefined ? (row[map.assignee]     ||"").trim() : "",
-        memo:         map.memo         !== undefined ? (row[map.memo]         ||"").trim() : "",
-        nextCallDate: map.nextCallDate  !== undefined ? (row[map.nextCallDate] ||"").trim() : "",
-        lastCallDate: map.lastCallDate  !== undefined ? (row[map.lastCallDate] ||"").trim() : "",
-        callCount:    map.callCount     !== undefined ? parseInt(row[map.callCount])||0      : 0,
+        id:            genId(),
+        companyName:   company.trim(),
+        phone:         g("phone"),
+        email:         g("email"),
+        mailFlag:      g("mailFlag"),
+        hpSite:        g("hpSite"),
+        gbp:           g("gbp"),
+        gbpSiteUrl:    g("gbpSiteUrl"),
+        gbpManagement: g("gbpManagement"),
+        status:        g("status") || "未架電",
+        assignee:      g("assignee"),
+        department:    g("department"),
+        industry:      g("industry"),
+        leadSource:    g("leadSource"),
+        absenceReason: g("absenceReason"),
+        memo:          g("memo"),
+        storeCount:    g("storeCount"),
+        refusalReason: g("refusalReason"),
+        posting:       g("posting"),
+        review:        g("review"),
+        sns:           g("sns"),
+        instagram:     g("instagram"),
+        line:          g("line"),
+        facebook:      g("facebook"),
+        twitter:       g("twitter"),
+        os:            g("os"),
+        nextCallDate:  g("nextCallDate"),
+        lastCallDate:  g("lastCallDate"),
         importedAt: nowIso(), updatedAt: nowIso(), source:"csv",
       });
     }
@@ -846,71 +902,103 @@ function DuplicateModal({ records, onClean, onClose }) {
 // ── RecordFormModal (shared by New & Edit) ─────────────────────────────────────
 function RecordFormModal({ initial, title, onSave, onClose }) {
   const [form, setForm] = useState({
-    companyName:"", phone:"", email:"", url:"",
-    status:"未架電", assignee:"", nextCallDate:"", callCount:0, memo:"",
+    companyName:"", phone:"", email:"", mailFlag:"",
+    hpSite:"", gbp:"", gbpSiteUrl:"", gbpManagement:"",
+    status:"未架電", assignee:"", department:"",
+    lastCallDate:"", nextCallDate:"",
+    industry:"", leadSource:"", absenceReason:"", refusalReason:"",
+    storeCount:"", posting:"", review:"",
+    sns:"", instagram:"", line:"", facebook:"", twitter:"", os:"",
+    memo:"",
     ...initial,
   });
   const upd = (k,v) => setForm(f => ({ ...f, [k]:v }));
+  const txt = (key, label, colSpan=1, type="text") => (
+    <div className={colSpan===2 ? "col-span-2" : ""}>
+      <label className="block text-xs text-slate-500 mb-1">{label}</label>
+      <input type={type} value={form[key]||""}
+        onChange={e => upd(key, e.target.value)}
+        className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+    </div>
+  );
+  const SectionLabel = ({children}) => (
+    <div className="col-span-2 pt-2 pb-0.5 border-b border-slate-100">
+      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{children}</span>
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
-        <div className="flex items-center justify-between mb-5">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[92vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <h2 className="text-base font-bold text-slate-800">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">企業名 <span className="text-rose-500">*</span></label>
-            <input type="text" value={form.companyName}
-              onChange={e => upd("companyName", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">電話番号</label>
-            <input type="text" value={form.phone||""} onChange={e => upd("phone", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">メールアドレス</label>
-            <input type="email" value={form.email||""} onChange={e => upd("email", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">GBP/URL</label>
-            <input type="text" value={form.url||""} onChange={e => upd("url", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">ステータス</label>
-            <select value={form.status||"未架電"} onChange={e => upd("status", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">担当者</label>
-            <input type="text" value={form.assignee||""} onChange={e => upd("assignee", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">次回架電日</label>
-            <input type="date" value={form.nextCallDate||""} onChange={e => upd("nextCallDate", e.target.value)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">架電回数</label>
-            <input type="number" min="0" value={form.callCount||0}
-              onChange={e => upd("callCount", parseInt(e.target.value)||0)}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div className="col-span-2">
-            <label className="block text-xs text-slate-500 mb-1">メモ/情報</label>
-            <textarea value={form.memo||""} onChange={e => upd("memo", e.target.value)} rows={3}
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          <div className="grid grid-cols-2 gap-3">
+
+            {/* 企業情報 */}
+            <SectionLabel>企業情報</SectionLabel>
+            <div className="col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">企業名 <span className="text-rose-500">*</span></label>
+              <input type="text" value={form.companyName} autoFocus
+                onChange={e => upd("companyName", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            {txt("phone",      "電話番号")}
+            {txt("department", "部署")}
+            {txt("industry",   "業種")}
+            {txt("leadSource", "ソース")}
+            {txt("storeCount", "店舗数")}
+
+            {/* 架電管理 */}
+            <SectionLabel>架電管理</SectionLabel>
+            {txt("lastCallDate",  "架電日",     1, "date")}
+            {txt("nextCallDate",  "次回架電日",  1, "date")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">状況</label>
+              <select value={form.status||"未架電"} onChange={e => upd("status", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            {txt("assignee",      "担当者")}
+            {txt("absenceReason", "不在理由")}
+            {txt("refusalReason", "断り理由")}
+
+            {/* Web / GBP */}
+            <SectionLabel>Web / GBP</SectionLabel>
+            {txt("hpSite",        "HPサイト",   2)}
+            {txt("gbp",           "GBP")}
+            {txt("gbpManagement", "GBPの管理")}
+            {txt("gbpSiteUrl",    "GBPサイトURL", 2)}
+            {txt("posting",       "投稿")}
+            {txt("review",        "口コミ")}
+
+            {/* SNS */}
+            <SectionLabel>SNS</SectionLabel>
+            {txt("sns",       "SNS")}
+            {txt("instagram", "Insta")}
+            {txt("line",      "Line")}
+            {txt("facebook",  "FB")}
+            {txt("twitter",   "Twitter")}
+            {txt("os",        "OS")}
+
+            {/* メール */}
+            <SectionLabel>メール</SectionLabel>
+            {txt("mailFlag", "メール")}
+            {txt("email",    "メアド", 1, "email")}
+
+            {/* メモ */}
+            <SectionLabel>メモ</SectionLabel>
+            <div className="col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">簡易的な情報/次回架電時の情報メモ</label>
+              <textarea value={form.memo||""} onChange={e => upd("memo", e.target.value)} rows={4}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+            </div>
           </div>
         </div>
-        <div className="flex gap-2 justify-end mt-4 pt-4 border-t border-slate-100">
+        <div className="flex gap-2 justify-end px-6 py-4 border-t border-slate-100 shrink-0">
           <button onClick={onClose}
             className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
             キャンセル
@@ -934,7 +1022,7 @@ export default function App() {
   const [search,         setSearch]         = useState("");
   const [statusFilter,   setStatusFilter]   = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [visibleCols,    setVisibleCols]    = useState(ALL_COLUMNS.map(c => c.key));
+  const [visibleCols,    setVisibleCols]    = useState(DEFAULT_VISIBLE_COLS);
   const [showColDrop,    setShowColDrop]    = useState(false);
   const [page,           setPage]           = useState(1);
   const [showSettings,   setShowSettings]   = useState(false);
@@ -1264,10 +1352,10 @@ export default function App() {
                       <td key={col.key} className="px-3 py-2.5 whitespace-nowrap max-w-xs">
                         {col.key === "status" ? (
                           <StatusBadge status={rec.status} />
-                        ) : col.key === "url" && rec.url ? (
-                          <a href={rec.url} target="_blank" rel="noreferrer"
+                        ) : (col.key === "hpSite" || col.key === "gbpSiteUrl") && rec[col.key] ? (
+                          <a href={rec[col.key]} target="_blank" rel="noreferrer"
                             className="text-blue-600 hover:underline text-xs block max-w-36 truncate">
-                            {rec.url}
+                            {rec[col.key]}
                           </a>
                         ) : col.key === "nextCallDate" && rec.nextCallDate && rec.nextCallDate <= today ? (
                           <span className="text-amber-600 font-semibold text-xs">{rec.nextCallDate} ⚠</span>
