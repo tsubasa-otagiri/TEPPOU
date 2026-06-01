@@ -503,26 +503,35 @@ function SettingsModal({ settings, onSave, onClose }) {
 
 // ── ImportModal ────────────────────────────────────────────────────────────────
 function ImportModal({ onImport, onClose }) {
-  const [mode, setMode] = useState("sales");
-  const [log,  setLog]  = useState(null);
+  const [mode,      setMode]      = useState("sales");
+  const [inputMode, setInputMode] = useState("file");   // "file" | "paste"
+  const [pasteText, setPasteText] = useState("");
+  const [log,       setLog]       = useState(null);
   const fileRef = useRef();
+
+  const process = text => {
+    try {
+      const rows = parseCSV(text);
+      const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
+      setLog(result);
+      if (result.records && result.records.length > 0) onImport(result.records);
+    } catch (ex) {
+      setLog({ error: `インポートエラー: ${ex.message}`, records: [] });
+    }
+  };
 
   const handleFile = e => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => {
-      try {
-        const rows = parseCSV(ev.target.result);
-        const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
-        setLog(result);
-        if (result.records && result.records.length > 0) onImport(result.records);
-      } catch (ex) {
-        setLog({ error: `インポートエラー: ${ex.message}`, records: [] });
-      }
-    };
+    reader.onload = ev => process(ev.target.result);
     reader.readAsText(file, "UTF-8");
     e.target.value = "";
+  };
+
+  const handlePaste = () => {
+    if (!pasteText.trim()) return;
+    process(pasteText);
   };
 
   function doImportSales(rows) {
@@ -618,7 +627,7 @@ function ImportModal({ onImport, onClose }) {
             <label key={opt.value}
               className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors
                 ${mode===opt.value ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}
-              onClick={() => setMode(opt.value)}>
+              onClick={() => { setMode(opt.value); setLog(null); }}>
               <div className={`w-4 h-4 mt-0.5 rounded-full border-2 flex items-center justify-center shrink-0
                 ${mode===opt.value ? "border-blue-600 bg-blue-600" : "border-slate-400"}`}>
                 {mode===opt.value && <div className="w-2 h-2 rounded-full bg-white" />}
@@ -631,16 +640,65 @@ function ImportModal({ onImport, onClose }) {
           ))}
         </div>
 
-        {/* Drop zone */}
-        <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-8 cursor-pointer transition-colors mb-4 bg-slate-50 hover:bg-blue-50">
-          <svg className="w-9 h-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-          </svg>
-          <span className="text-sm text-slate-600 font-medium">CSVファイルを選択</span>
-          <span className="text-xs text-slate-400">文字コード: UTF-8 推奨</span>
-          <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
-        </label>
+        {/* Input mode tabs */}
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden mb-4 text-xs font-medium">
+          {[
+            { id:"file",  label:"📂 ファイル選択" },
+            { id:"paste", label:"📋 テキスト貼り付け" },
+          ].map(tab => (
+            <button key={tab.id}
+              onClick={() => { setInputMode(tab.id); setLog(null); }}
+              className={`flex-1 py-2 transition-colors
+                ${inputMode===tab.id
+                  ? "bg-blue-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50"}`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* File drop zone */}
+        {inputMode === "file" && (
+          <label className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-8 cursor-pointer transition-colors mb-4 bg-slate-50 hover:bg-blue-50">
+            <svg className="w-9 h-9 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <span className="text-sm text-slate-600 font-medium">CSVファイルを選択</span>
+            <span className="text-xs text-slate-400">文字コード: UTF-8 推奨</span>
+            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+          </label>
+        )}
+
+        {/* Paste zone */}
+        {inputMode === "paste" && (
+          <div className="mb-4">
+            <textarea
+              value={pasteText}
+              onChange={e => { setPasteText(e.target.value); setLog(null); }}
+              placeholder={"ここにCSVテキストをペースト\n例: 企業名,電話番号,メモ\n株式会社〇〇,03-1234-5678,メモ内容"}
+              rows={7}
+              className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-xs font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none bg-slate-50 placeholder:text-slate-300"
+            />
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-xs text-slate-400">
+                {pasteText.trim() ? `${pasteText.trim().split(/\r?\n/).length} 行` : ""}
+              </span>
+              <div className="flex gap-2">
+                <button onClick={() => { setPasteText(""); setLog(null); }}
+                  disabled={!pasteText}
+                  className="px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30 transition-colors">
+                  クリア
+                </button>
+                <button onClick={handlePaste}
+                  disabled={!pasteText.trim()}
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-40 transition-colors">
+                  取り込む
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Log */}
         {log && (
