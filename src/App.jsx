@@ -1259,19 +1259,35 @@ function AnalysisView({ records }) {
     .map(s => ({ status:s, count:statusMap[s]||0, cfg:STATUS_CFG[s] }))
     .filter(d=>d.count>0).sort((a,b)=>b.count-a.count);
 
-  const assigneeMap={};
-  records.forEach(r=>{ const a=r.assignee||"未設定"; assigneeMap[a]=(assigneeMap[a]||0)+1; });
-  const assigneeData=Object.entries(assigneeMap).sort((a,b)=>b[1]-a[1]);
+  // 担当者 あり/なし
+  const assigneeAri   = records.filter(r => r.assignee?.trim()).length;
+  const assigneeNashi = records.length - assigneeAri;
+  const assigneeAriPct = records.length ? Math.round(assigneeAri/records.length*100) : 0;
 
   const indMap={};
   records.forEach(r=>{ if(r.industry) indMap[r.industry]=(indMap[r.industry]||0)+1; });
   const indData=Object.entries(indMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
 
-  const storeRanges=[["1店舗",1,1],["2〜5店舗",2,5],["6〜10店舗",6,10],["11〜50店舗",11,50],["51店舗以上",51,Infinity]];
-  const storeData=storeRanges.map(([label,lo,hi])=>({
-    label, count:records.filter(r=>{ const n=parseInt(r.storeCount)||0; return n>=lo&&n<=hi; }).length
-  })).filter(d=>d.count>0);
-  const maxStore=Math.max(...storeData.map(d=>d.count),1);
+  // 店舗数別分析
+  const STORE_RANGES = [
+    ["1000店舗以上", 1000, Infinity],
+    ["500〜999店舗",  500,  999],
+    ["300〜499店舗",  300,  499],
+    ["100〜299店舗",  100,  299],
+    ["80〜99店舗",     80,   99],
+    ["50〜79店舗",     50,   79],
+    ["25〜49店舗",     25,   49],
+    ["11〜24店舗",     11,   24],
+    ["10店舗以下",      0,   10],
+  ];
+  const APPO_STATUSES = ["9.アポ獲得"];
+  const storeAnalysis = STORE_RANGES.map(([label,lo,hi]) => {
+    const inRange = records.filter(r => { const n=parseInt(r.storeCount)||0; return n>=lo && n<=hi; });
+    const appo    = inRange.filter(r => APPO_STATUSES.includes(r.status)).length;
+    const rate    = inRange.length ? (appo/inRange.length*100).toFixed(1) : null;
+    return { label, count:inRange.length, appo, rate };
+  });
+  const maxStoreCount = Math.max(...storeAnalysis.map(d=>d.count), 1);
 
   const Card=({label,value,color,bg})=>(
     <div className={`${bg} rounded-xl border border-slate-200 p-4 text-center`}>
@@ -1308,23 +1324,27 @@ function AnalysisView({ records }) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 担当者別 */}
+        {/* 担当者 あり/なし */}
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">担当者別件数</h3>
-          <table className="w-full text-xs">
-            <thead><tr className="text-slate-400 border-b border-slate-100 text-left">
-              <th className="pb-2">担当者</th><th className="pb-2 text-right">件数</th><th className="pb-2 text-right">割合</th>
-            </tr></thead>
-            <tbody>
-              {assigneeData.map(([name,count])=>(
-                <tr key={name} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-1.5 text-slate-700">{name}</td>
-                  <td className="py-1.5 text-right font-semibold text-slate-700">{count.toLocaleString()}</td>
-                  <td className="py-1.5 text-right text-slate-400">{Math.round(count/records.length*100)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h3 className="text-sm font-semibold text-slate-700 mb-4">担当者 割合</h3>
+          <div className="flex h-6 rounded-full overflow-hidden mb-3">
+            <div className="bg-blue-500 transition-all" style={{width:`${assigneeAriPct}%`}} />
+            <div className="bg-slate-200 flex-1" />
+          </div>
+          <div className="flex gap-4 text-xs">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 shrink-0" />
+              <span className="text-slate-700">担当者あり</span>
+              <strong className="text-blue-700 ml-1">{assigneeAriPct}%</strong>
+              <span className="text-slate-400">（{assigneeAri.toLocaleString()}件）</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-300 shrink-0" />
+              <span className="text-slate-700">担当者なし</span>
+              <strong className="text-slate-500 ml-1">{100-assigneeAriPct}%</strong>
+              <span className="text-slate-400">（{assigneeNashi.toLocaleString()}件）</span>
+            </span>
+          </div>
         </div>
 
         {/* 業種別 */}
@@ -1344,21 +1364,65 @@ function AnalysisView({ records }) {
         </div>
       </div>
 
-      {/* 店舗数分布 */}
-      {storeData.length>0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">店舗数分布</h3>
-          <div className="space-y-2">
-            {storeData.map(d=>(
-              <div key={d.label} className="flex items-center gap-2">
-                <span className="text-xs text-slate-600 w-28 shrink-0">{d.label}</span>
-                <Bar count={d.count} max={maxStore} colorClass="bg-emerald-400" />
-                <span className="text-xs font-semibold text-slate-700 w-12 text-right shrink-0">{d.count.toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
+      {/* 店舗数別分析 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-3">店舗数別分析</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+                <th className="pb-2 font-semibold">店舗数</th>
+                <th className="pb-2 font-semibold text-right">社数</th>
+                <th className="pb-2 font-semibold text-right">アポ</th>
+                <th className="pb-2 font-semibold text-right">率</th>
+                <th className="pb-2 font-semibold pl-4 w-32">社数バー</th>
+              </tr>
+            </thead>
+            <tbody>
+              {storeAnalysis.map(d => (
+                <tr key={d.label} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-2 text-slate-700 font-medium">{d.label}</td>
+                  <td className="py-2 text-right text-slate-600">{d.count.toLocaleString()}</td>
+                  <td className="py-2 text-right font-bold text-blue-700">{d.appo}</td>
+                  <td className={`py-2 text-right font-semibold ${
+                    d.rate === null ? "text-slate-300"
+                    : parseFloat(d.rate) >= 10 ? "text-teal-600"
+                    : parseFloat(d.rate) >= 5  ? "text-blue-600"
+                    : "text-slate-500"
+                  }`}>
+                    {d.rate === null ? "—" : `${d.rate}%`}
+                  </td>
+                  <td className="py-2 pl-4">
+                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                      <div className="h-full bg-emerald-400 rounded-full"
+                        style={{width:`${Math.max(2, d.count/maxStoreCount*100)}%`}} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t-2 border-slate-200 font-semibold">
+                <td className="pt-2 text-slate-700">合計</td>
+                <td className="pt-2 text-right text-slate-700">
+                  {storeAnalysis.reduce((s,d)=>s+d.count,0).toLocaleString()}
+                </td>
+                <td className="pt-2 text-right text-blue-700">
+                  {storeAnalysis.reduce((s,d)=>s+d.appo,0)}
+                </td>
+                <td className="pt-2 text-right text-slate-500">
+                  {(() => {
+                    const tot = storeAnalysis.reduce((s,d)=>s+d.count,0);
+                    const apo = storeAnalysis.reduce((s,d)=>s+d.appo,0);
+                    return tot ? `${(apo/tot*100).toFixed(1)}%` : "—";
+                  })()}
+                </td>
+                <td />
+              </tr>
+            </tfoot>
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }
