@@ -1,0 +1,13 @@
+name            = "teppou-worker"
+main            = "worker/index.js"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "TEPPOU_KV"
+id      = "REPLACE_WITH_KV_NAMESPACE_ID"   # wrangler kv namespace create TEPPOU_KV で取得
+
+# ローカル開発用（wrangler dev）
+# [[kv_namespaces]]
+# binding  = "TEPPOU_KV"
+# id       = "REPLACE_WITH_PREVIEW_KV_ID"
+# preview_id = "REPLACE_WITH_PREVIEW_KV_ID"

@@ -6,6 +6,26 @@ const PASSWORD     = "1111";
 const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE    = 100;
+const API_BASE     = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const POLL_MS      = 30_000; // 30秒ポーリング
+
+// ── API クライアント ────────────────────────────────────────────────────────────
+async function apiGet(resource) {
+  const r = await fetch(`${API_BASE}/api/${resource}`);
+  if (r.status === 403) throw Object.assign(new Error("Forbidden"), { status: 403 });
+  if (!r.ok) throw new Error(`API GET ${resource} failed: ${r.status}`);
+  return r.json();
+}
+async function apiSet(resource, data) {
+  if (!API_BASE) return; // ローカル開発時はスキップ
+  const r = await fetch(`${API_BASE}/api/${resource}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (r.status === 403) throw Object.assign(new Error("Forbidden"), { status: 403 });
+  if (!r.ok) throw new Error(`API SET ${resource} failed: ${r.status}`);
+}
 
 // ── IP アクセス制限 ────────────────────────────────────────────────────────────
 const ALLOWED_IPS = new Set([
@@ -1619,6 +1639,11 @@ function PullView({ records }) {
 
 // ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
+  // ── API 同期用 refs ──────────────────────────────────────────────────────────
+  const apiLoadedRef      = useRef(false);   // 初回 API 取得完了フラグ
+  const lastWriteRef      = useRef(0);       // 最終書き込み時刻 (ms)
+  const [syncing, setSyncing] = useState(false); // 手動更新中スピナー
+
   // ── IP チェック: null=確認中, true=許可, false=拒否 ──────────────────────────
   const [ipStatus,       setIpStatus]       = useState(null);
   const [myIp,           setMyIp]           = useState("");
@@ -1656,42 +1681,99 @@ export default function App() {
   const colDropRef = useRef();
 
   // ── Persistence ──────────────────────────────────────────────────────────────
-  // 初回ロード: IndexedDB → なければ localStorage から移行
-  useEffect(() => {
-    idbGetAll().then(recs => {
-      if (recs.length > 0) {
-        setRecords(recs);
-      } else {
-        // localStorage からの移行
-        try {
-          const s = localStorage.getItem(STORAGE_KEY);
-          if (s) {
-            const parsed = JSON.parse(s);
-            setRecords(parsed);
-            idbPutAll(parsed).then(() => localStorage.removeItem(STORAGE_KEY));
-          }
-        } catch {}
-      }
-    }).catch(() => {
-      // IndexedDB 使用不可の場合は localStorage にフォールバック
-      try { const s = localStorage.getItem(STORAGE_KEY); if (s) setRecords(JSON.parse(s)); } catch {}
-    });
-    try { const s = localStorage.getItem(SETTINGS_KEY); if (s) setSettings(JSON.parse(s)); } catch {}
+
+  // ローカルキャッシュ（IndexedDB）から読み込むヘルパー
+  const loadFromLocal = useCallback(async () => {
+    try {
+      const recs = await idbGetAll();
+      if (recs.length > 0) return recs;
+    } catch {}
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return null;
   }, []);
 
-  // records 変更時: IndexedDB に保存（500ms デバウンス）
-  const idbSaveTimer = useRef(null);
+  // ローカルキャッシュに書き込む
+  const saveToLocal = useCallback((recs) => {
+    idbPutAll(recs).catch(() => {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(recs)); } catch {}
+    });
+  }, []);
+
+  // API からデータを取得してstateを更新
+  const fetchAllFromAPI = useCallback(async ({ manual = false } = {}) => {
+    if (!API_BASE) return;
+    if (manual) setSyncing(true);
+    const fetchStart = Date.now();
+    try {
+      const recs = await apiGet("records");
+      // 巻き戻し防止: 書き込みから60秒以内はポーリング上書きしない
+      if (!manual && fetchStart < lastWriteRef.current + 60_000) return;
+      if (Array.isArray(recs)) {
+        setRecords(recs);
+        saveToLocal(recs);
+        setStorageWarning(false);
+      }
+    } catch (e) {
+      if (e.status === 403) { setIpStatus(false); }
+    } finally {
+      if (manual) setSyncing(false);
+    }
+  }, [saveToLocal]);
+
+  // API同期ヘルパー（mutations から呼ぶ）
+  const syncToAPI = useCallback((newRecs) => {
+    if (!apiLoadedRef.current || !API_BASE) return;
+    lastWriteRef.current = Date.now();
+    apiSet("records", newRecs).catch(e => {
+      if (e.status === 403) setIpStatus(false);
+    });
+    saveToLocal(newRecs);
+  }, [saveToLocal]);
+
+  // 初回ロード
   useEffect(() => {
-    if (idbSaveTimer.current) clearTimeout(idbSaveTimer.current);
-    idbSaveTimer.current = setTimeout(() => {
-      idbPutAll(records).then(() => setStorageWarning(false)).catch(() => {
-        // IndexedDB 失敗時は localStorage にフォールバック
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); setStorageWarning(false); }
-        catch { setStorageWarning(true); }
+    // settings はローカルのみ
+    try { const s = localStorage.getItem(SETTINGS_KEY); if (s) setSettings(JSON.parse(s)); } catch {}
+
+    if (API_BASE) {
+      // API から取得 → なければローカルキャッシュ → なければ API に移行
+      apiGet("records").then(async recs => {
+        if (Array.isArray(recs) && recs.length > 0) {
+          setRecords(recs);
+          saveToLocal(recs);
+        } else {
+          // API が空: ローカルキャッシュを API にマイグレーション
+          const local = await loadFromLocal();
+          if (local && local.length > 0) {
+            setRecords(local);
+            apiSet("records", local).catch(console.error);
+          }
+        }
+        apiLoadedRef.current = true;
+      }).catch(async (e) => {
+        if (e.status === 403) { setIpStatus(false); return; }
+        // API エラー: ローカルキャッシュにフォールバック
+        const local = await loadFromLocal();
+        if (local) setRecords(local);
+        apiLoadedRef.current = true;
       });
-    }, 500);
-    return () => clearTimeout(idbSaveTimer.current);
-  }, [records]);
+    } else {
+      // API_BASE 未設定（ローカル開発）: IndexedDB のみ
+      loadFromLocal().then(local => { if (local) setRecords(local); });
+      apiLoadedRef.current = true;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 30秒ポーリング
+  useEffect(() => {
+    if (!API_BASE) return;
+    const id = setInterval(() => fetchAllFromAPI(), POLL_MS);
+    return () => clearInterval(id);
+  }, [fetchAllFromAPI]);
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }, [settings]);
 
@@ -1752,29 +1834,32 @@ export default function App() {
   const visibleDefs = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
-  const addRecords = useCallback(recs => { setRecords(p => [...p, ...recs]); setPage(1); }, []);
+  const addRecords = useCallback(recs => {
+    setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
+    setPage(1);
+  }, [syncToAPI]);
 
   const saveRecord = useCallback(form => {
     const isEdit = records.some(r => r.id === form.id);
     if (isEdit) {
-      setRecords(p => p.map(r => r.id===form.id ? { ...r, ...form, updatedAt:nowIso() } : r));
+      setRecords(p => { const next = p.map(r => r.id===form.id ? { ...r, ...form, updatedAt:nowIso() } : r); syncToAPI(next); return next; });
     } else {
-      setRecords(p => [...p, { ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual" }]);
+      setRecords(p => { const next = [...p, { ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual" }]; syncToAPI(next); return next; });
     }
-  }, [records]);
+  }, [records, syncToAPI]);
 
   const deleteRecord = useCallback(id => {
     if (!window.confirm("このレコードを削除しますか？")) return;
-    setRecords(p => p.filter(r => r.id !== id));
+    setRecords(p => { const next = p.filter(r => r.id !== id); syncToAPI(next); return next; });
     setSelected(p => { const n = new Set(p); n.delete(id); return n; });
-  }, []);
+  }, [syncToAPI]);
 
   const deleteSelected = useCallback(() => {
     if (!selected.size) return;
     if (!window.confirm(`選択した ${selected.size} 件を削除しますか？`)) return;
-    setRecords(p => p.filter(r => !selected.has(r.id)));
+    setRecords(p => { const next = p.filter(r => !selected.has(r.id)); syncToAPI(next); return next; });
     setSelected(new Set());
-  }, [selected]);
+  }, [selected, syncToAPI]);
 
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -1785,8 +1870,8 @@ export default function App() {
 
   const cleanDuplicates = useCallback(ids => {
     const del = new Set(ids);
-    setRecords(p => p.filter(r => !del.has(r.id)));
-  }, []);
+    setRecords(p => { const next = p.filter(r => !del.has(r.id)); syncToAPI(next); return next; });
+  }, [syncToAPI]);
 
   const toggleSelect = useCallback((id, checked) => {
     setSelected(p => { const n = new Set(p); checked ? n.add(id) : n.delete(id); return n; });
@@ -1837,6 +1922,14 @@ export default function App() {
               <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-amber-300">
                 ⏰ {alerts.length}件アラート
               </span>
+            )}
+            {API_BASE && (
+              <button onClick={() => fetchAllFromAPI({ manual: true })}
+                disabled={syncing}
+                className="flex items-center gap-1 text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50">
+                <span className={syncing ? "animate-spin inline-block" : ""}>🔄</span>
+                更新
+              </button>
             )}
             <button onClick={() => setShowSettings(true)}
               className="flex items-center gap-1 text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">
