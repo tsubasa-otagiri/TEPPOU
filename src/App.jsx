@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const PASSWORD     = "1111";
+const PASSWORD     = "0227";
 const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE    = 100;
