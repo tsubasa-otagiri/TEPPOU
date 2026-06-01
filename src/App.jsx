@@ -49,17 +49,19 @@ const IS_MEMBERS = [
 ];
 
 const STATUS_CFG = {
-  "未架電":            { bg:"bg-slate-100",  text:"text-slate-600",  border:"border-slate-300",  dot:"bg-slate-400"  },
-  "不通":              { bg:"bg-slate-200",  text:"text-slate-700",  border:"border-slate-400",  dot:"bg-slate-500"  },
-  "不在":              { bg:"bg-orange-100", text:"text-orange-700", border:"border-orange-300", dot:"bg-orange-400" },
-  "受付断り":          { bg:"bg-rose-100",   text:"text-rose-700",   border:"border-rose-300",   dot:"bg-rose-500"   },
-  "担当コネクト":      { bg:"bg-sky-100",    text:"text-sky-700",    border:"border-sky-300",    dot:"bg-sky-500"    },
-  "アポイント獲得商談":{ bg:"bg-teal-100",   text:"text-teal-700",   border:"border-teal-300",   dot:"bg-teal-500"   },
-  "商談中":            { bg:"bg-blue-100",   text:"text-blue-700",   border:"border-blue-300",   dot:"bg-blue-500"   },
-  "成約":              { bg:"bg-green-100",  text:"text-green-700",  border:"border-green-300",  dot:"bg-green-500"  },
-  "失注":              { bg:"bg-red-100",    text:"text-red-700",    border:"border-red-300",    dot:"bg-red-500"    },
-  "保留":              { bg:"bg-yellow-100", text:"text-yellow-700", border:"border-yellow-300", dot:"bg-yellow-500" },
-  "折り返し待ち":      { bg:"bg-purple-100", text:"text-purple-700", border:"border-purple-300", dot:"bg-purple-500" },
+  "0.日程調整":        { row:"bg-rose-50",    bg:"bg-rose-200",   text:"text-rose-800",   border:"border-rose-400",   dot:"bg-rose-600"   },
+  "1.高確度":          { row:"bg-pink-50",    bg:"bg-pink-100",   text:"text-pink-700",   border:"border-pink-300",   dot:"bg-pink-500"   },
+  "2.優先":            { row:"bg-orange-50",  bg:"bg-orange-100", text:"text-orange-700", border:"border-orange-300", dot:"bg-orange-400" },
+  "3.並":              { row:"",              bg:"bg-gray-100",   text:"text-gray-500",   border:"border-gray-300",   dot:"bg-gray-400"   },
+  "4.受付カット":      { row:"bg-slate-50",   bg:"bg-slate-100",  text:"text-slate-600",  border:"border-slate-300",  dot:"bg-slate-500"  },
+  "4.別担当架電":      { row:"bg-sky-50",     bg:"bg-sky-100",    text:"text-sky-700",    border:"border-sky-300",    dot:"bg-sky-500"    },
+  "4.商談中":          { row:"bg-violet-50",  bg:"bg-violet-100", text:"text-violet-700", border:"border-violet-300", dot:"bg-violet-500" },
+  "5.メール送付":      { row:"bg-yellow-50",  bg:"bg-yellow-100", text:"text-yellow-700", border:"border-yellow-300", dot:"bg-amber-400"  },
+  "6.コネクト（改）":  { row:"bg-indigo-50",  bg:"bg-indigo-100", text:"text-indigo-600", border:"border-indigo-300", dot:"bg-indigo-400" },
+  "7.コネクト（無）":  { row:"bg-blue-50",    bg:"bg-blue-100",   text:"text-blue-900",   border:"border-blue-600",   dot:"bg-blue-800"   },
+  "8.不要":            { row:"bg-purple-50",  bg:"bg-purple-100", text:"text-purple-900", border:"border-purple-600", dot:"bg-purple-800" },
+  "8.当社契約":        { row:"bg-gray-100",   bg:"bg-gray-200",   text:"text-gray-800",   border:"border-gray-500",   dot:"bg-gray-700"   },
+  "9.アポ獲得":        { row:"bg-red-50",     bg:"bg-red-100",    text:"text-red-900",    border:"border-red-600",    dot:"bg-red-700"    },
 };
 
 const ALL_COLUMNS = [
@@ -949,47 +951,105 @@ function ImportModal({ onImport, onClose }) {
 
 // ── DuplicateModal ─────────────────────────────────────────────────────────────
 function DuplicateModal({ records, onClean, onClose }) {
+  const [step,      setStep]      = useState("select"); // "select" | "confirm"
+  const [deleteSet, setDeleteSet] = useState(() => {
+    const s = new Set();
+    const g = {};
+    records.forEach(r => {
+      const k = normName(r.companyName); if (!k) return;
+      (g[k] = g[k]||[]).push(r);
+    });
+    Object.values(g).filter(rs => rs.length > 1).forEach(rs => {
+      const sorted = [...rs].sort((a,b) => new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt));
+      sorted.slice(1).forEach(r => s.add(r.id));
+    });
+    return s;
+  });
+
   const groups = (() => {
     const g = {};
     records.forEach(r => {
-      const key = normName(r.companyName);
-      if (!key) return;
-      (g[key] = g[key]||[]).push(r);
+      const k = normName(r.companyName); if (!k) return;
+      (g[k] = g[k]||[]).push(r);
     });
     return Object.values(g)
       .filter(rs => rs.length > 1)
-      .map(rs => rs.sort((a,b) => new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt)));
+      .map(rs => [...rs].sort((a,b) => new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt)));
   })();
 
-  const totalDel = groups.reduce((s,g) => s+g.length-1, 0);
+  const toggle = id => setDeleteSet(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toDelete = records.filter(r => deleteSet.has(r.id));
 
+  // ── Confirm screen ──
+  if (step === "confirm") return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col max-h-[80vh]">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold text-slate-800">🗑️ 削除確認</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <p className="text-sm text-slate-600 mb-4">
+          以下 <strong className="text-red-600">{toDelete.length}件</strong> を削除します。この操作は元に戻せません。
+        </p>
+        <div className="overflow-y-auto flex-1 mb-4 space-y-1 pr-1">
+          {toDelete.map(r => (
+            <div key={r.id} className="flex items-center gap-2 px-3 py-2 bg-red-50 rounded-lg border border-red-200 text-xs">
+              <span className="font-semibold text-red-800 flex-1">{r.companyName}</span>
+              <span className="text-slate-500">{(r.updatedAt||r.importedAt||"").slice(0,10)}</span>
+              <StatusBadge status={r.status} />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
+          <button onClick={() => setStep("select")}
+            className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+            ← 戻る
+          </button>
+          <button onClick={() => { onClean(Array.from(deleteSet)); onClose(); }}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            {toDelete.length}件を削除する
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Select screen ──
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 flex flex-col max-h-[80vh]">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="text-base font-bold text-slate-800">重複クレンジング</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
         </div>
         <p className="text-sm text-slate-500 mb-4">
           {groups.length === 0
             ? "✅ 重複データは見つかりませんでした。"
-            : `${groups.length}グループ、${totalDel}件の古いデータを削除します（最新1件を残します）。`}
+            : <>チェックをつけたレコードを削除します。<strong className="text-red-600">{deleteSet.size}件</strong>が選択中。</>}
         </p>
         {groups.length > 0 && (
-          <div className="overflow-y-auto flex-1 space-y-2 mb-4 pr-1">
+          <div className="overflow-y-auto flex-1 space-y-3 mb-4 pr-1">
             {groups.map((g, gi) => (
-              <div key={gi} className="border border-slate-200 rounded-xl p-3">
-                <div className="font-semibold text-sm text-slate-700 mb-2">{g[0].companyName}</div>
-                <div className="space-y-1">
+              <div key={gi} className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-3 py-2 font-semibold text-sm text-slate-700 border-b border-slate-200">
+                  {g[0].companyName}
+                  <span className="ml-2 text-xs font-normal text-slate-400">{g.length}件の重複</span>
+                </div>
+                <div className="divide-y divide-slate-100">
                   {g.map((r, i) => (
-                    <div key={r.id} className={`flex flex-wrap items-center gap-2 text-xs
-                      ${i===0 ? "text-green-700" : "text-slate-400 line-through"}`}>
-                      <span className="font-medium shrink-0">{i===0 ? "✓ 残す" : "× 削除"}</span>
-                      <span>{(r.updatedAt||r.importedAt||"").slice(0,10)}</span>
-                      <span>{r.phone||"—"}</span>
+                    <label key={r.id}
+                      className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-50 transition-colors
+                        ${deleteSet.has(r.id) ? "bg-red-50" : ""}`}>
+                      <input type="checkbox" checked={deleteSet.has(r.id)} onChange={() => toggle(r.id)}
+                        className="rounded border-slate-300 text-red-600 shrink-0" />
+                      <span className={`text-xs font-medium shrink-0 w-12 ${deleteSet.has(r.id) ? "text-red-500" : "text-green-600"}`}>
+                        {deleteSet.has(r.id) ? "× 削除" : "✓ 残す"}
+                      </span>
+                      <span className="text-xs text-slate-500 shrink-0">{(r.updatedAt||r.importedAt||"").slice(0,10)}</span>
+                      <span className="text-xs text-slate-600 shrink-0">{r.phone||"—"}</span>
                       <StatusBadge status={r.status} />
-                      {r.assignee && <span>{r.assignee}</span>}
-                    </div>
+                      {r.assignee && <span className="text-xs text-slate-500">{r.assignee}</span>}
+                    </label>
                   ))}
                 </div>
               </div>
@@ -1002,9 +1062,9 @@ function DuplicateModal({ records, onClean, onClose }) {
             キャンセル
           </button>
           {groups.length > 0 && (
-            <button onClick={() => { onClean(groups); onClose(); }}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold rounded-lg transition-colors">
-              {totalDel}件の重複を削除する
+            <button onClick={() => setStep("confirm")} disabled={deleteSet.size === 0}
+              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg disabled:opacity-40 transition-colors">
+              選択した {deleteSet.size}件 を削除する →
             </button>
           )}
         </div>
@@ -1228,7 +1288,9 @@ export default function App() {
   records.forEach(r => { statsMap[r.status] = (statsMap[r.status]||0) + 1; });
   const stats = Object.entries(statsMap).map(([s,c]) => ({ status:s, count:c, ...(STATUS_CFG[s]??{}) }));
 
-  const alerts   = records.filter(r => r.nextCallDate && r.nextCallDate <= today && r.status !== "成約" && r.status !== "失注");
+  const soon = (() => { const d = new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+  const doneStatuses = ["8.不要","8.当社契約"];
+  const alerts   = records.filter(r => r.nextCallDate && r.nextCallDate <= soon && !doneStatuses.includes(r.status));
   const assignees = [...new Set(records.map(r => r.assignee).filter(Boolean))];
   const visibleDefs = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
 
@@ -1257,9 +1319,8 @@ export default function App() {
     setSelected(new Set());
   }, [selected]);
 
-  const cleanDuplicates = useCallback(groups => {
-    const del = new Set();
-    groups.forEach(g => g.slice(1).forEach(r => del.add(r.id)));
+  const cleanDuplicates = useCallback(ids => {
+    const del = new Set(ids);
     setRecords(p => p.filter(r => !del.has(r.id)));
   }, []);
 
@@ -1500,9 +1561,10 @@ export default function App() {
                       データがありません。CSVをインポートするか、新規追加してください。
                     </td>
                   </tr>
-                ) : paginated.map(rec => (
-                  <tr key={rec.id}
-                    className={`hover:bg-slate-50/60 transition-colors ${selected.has(rec.id) ? "bg-blue-50" : ""}`}>
+                ) : paginated.map(rec => {
+                  const rowColor = selected.has(rec.id) ? "bg-blue-100" : (STATUS_CFG[rec.status]?.row ?? "");
+                  return (
+                  <tr key={rec.id} className={`transition-colors hover:brightness-95 ${rowColor}`}>
                     <td className="px-3 py-2.5">
                       <input type="checkbox" checked={selected.has(rec.id)}
                         onChange={e => toggleSelect(rec.id, e.target.checked)}
@@ -1517,8 +1579,14 @@ export default function App() {
                             className="text-blue-600 hover:underline text-xs block max-w-36 truncate">
                             {rec[col.key]}
                           </a>
-                        ) : col.key === "nextCallDate" && rec.nextCallDate && rec.nextCallDate <= today ? (
-                          <span className="text-amber-600 font-semibold text-xs">{rec.nextCallDate} ⚠</span>
+                        ) : col.key === "nextCallDate" && rec.nextCallDate ? (
+                          rec.nextCallDate < today
+                            ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{rec.nextCallDate} 🔴</span>
+                            : rec.nextCallDate === today
+                              ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{rec.nextCallDate} ⚠️</span>
+                              : rec.nextCallDate <= soon
+                                ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{rec.nextCallDate} ⏰</span>
+                                : <span className="text-slate-700 text-xs">{rec.nextCallDate}</span>
                         ) : col.key === "memo" ? (
                           <span className="text-slate-600 text-xs block max-w-56 truncate" title={rec.memo||""}>
                             {rec.memo || "—"}
@@ -1539,7 +1607,8 @@ export default function App() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
