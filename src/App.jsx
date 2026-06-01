@@ -1325,7 +1325,7 @@ function AnalysisView({ records }) {
   ];
   const APPO_STATUSES = ["9.アポ獲得"];
   const storeAnalysis = STORE_RANGES.map(([label,lo,hi]) => {
-    const inRange = records.filter(r => { const n=parseInt(r.storeCount)||0; return n>=lo && n<=hi; });
+    const inRange = records.filter(r => { const n=parseInt(String(r.storeCount||"").replace(/,/g,""))||0; return n>=lo && n<=hi; });
     const appo    = inRange.filter(r => APPO_STATUSES.includes(r.status)).length;
     const rate    = inRange.length ? (appo/inRange.length*100).toFixed(1) : null;
     return { label, count:inRange.length, appo, rate };
@@ -1644,7 +1644,7 @@ export default function App() {
     ? [...filtered].sort((a, b) => {
         let va = a[sortKey] ?? "", vb = b[sortKey] ?? "";
         if (sortKey === "lastCallDate" || sortKey === "nextCallDate") { va = normDate(va); vb = normDate(vb); }
-        if (sortKey === "storeCount") { va = parseInt(va)||0; vb = parseInt(vb)||0; return sortDir==="asc" ? va-vb : vb-va; }
+        if (sortKey === "storeCount") { va = parseInt(String(va).replace(/,/g,""))||0; vb = parseInt(String(vb).replace(/,/g,""))||0; return sortDir==="asc" ? va-vb : vb-va; }
         const cmp = String(va).localeCompare(String(vb), "ja");
         return sortDir === "asc" ? cmp : -cmp;
       })
