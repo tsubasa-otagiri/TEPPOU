@@ -95,8 +95,8 @@ const STATUS_CFG = {
   "0.日程調整":        { row:"bg-rose-50",    bg:"bg-rose-200",   text:"text-rose-800",   border:"border-rose-400",   dot:"bg-rose-600"   },
   "1.高確度":          { row:"bg-pink-50",    bg:"bg-pink-100",   text:"text-pink-700",   border:"border-pink-300",   dot:"bg-pink-500"   },
   "2.優先":            { row:"bg-orange-50",  bg:"bg-orange-100", text:"text-orange-700", border:"border-orange-300", dot:"bg-orange-400" },
-  "3.並":              { row:"",              bg:"bg-gray-100",   text:"text-gray-500",   border:"border-gray-300",   dot:"bg-gray-400"   },
-  "4.受付カット":      { row:"bg-slate-50",   bg:"bg-slate-100",  text:"text-slate-600",  border:"border-slate-300",  dot:"bg-slate-500"  },
+  "3.並":              { row:"bg-slate-50",   bg:"bg-slate-200",  text:"text-slate-500",  border:"border-slate-400",  dot:"bg-slate-400"  },
+  "4.受付カット":      { row:"bg-amber-50",   bg:"bg-amber-100",  text:"text-amber-800",  border:"border-amber-400",  dot:"bg-amber-500"  },
   "4.別担当架電":      { row:"bg-sky-50",     bg:"bg-sky-100",    text:"text-sky-700",    border:"border-sky-300",    dot:"bg-sky-500"    },
   "4.商談中":          { row:"bg-violet-50",  bg:"bg-violet-100", text:"text-violet-700", border:"border-violet-300", dot:"bg-violet-500" },
   "5.メール送付":      { row:"bg-yellow-50",  bg:"bg-yellow-100", text:"text-yellow-700", border:"border-yellow-300", dot:"bg-amber-400"  },
@@ -138,7 +138,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1648,6 +1648,7 @@ export default function App() {
   const [copiedId,       setCopiedId]       = useState(null);
   const [sortKey,        setSortKey]        = useState(null);
   const [sortDir,        setSortDir]        = useState("asc");
+  const [showStats,      setShowStats]      = useState(true);
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -1896,27 +1897,35 @@ export default function App() {
         {/* ── Stats bar ── */}
         {stats.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">ステータス別集計</p>
-            <div className="flex flex-wrap gap-2">
-              {stats.map(s => (
-                <button key={s.status}
-                  onClick={() => { setStatusFilter(statusFilter===s.status ? "all" : s.status); setPage(1); }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
-                    ${statusFilter===s.status
-                      ? `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} ring-2 ring-offset-1 ring-blue-400`
-                      : `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} hover:opacity-80`}`}>
-                  <span className={`w-2 h-2 rounded-full ${s.dot??"bg-gray-400"}`} />
-                  {s.status}
-                  <span className="font-bold">{s.count}</span>
-                </button>
-              ))}
-              {statusFilter !== "all" && (
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">ステータス別集計</p>
+              <div className="flex gap-1.5">
                 <button onClick={() => { setStatusFilter("all"); setPage(1); }}
-                  className="px-3 py-1.5 text-xs border border-slate-300 rounded-lg text-slate-500 hover:bg-slate-50">
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors">
                   全表示
                 </button>
-              )}
+                <button onClick={() => setShowStats(v => !v)}
+                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors">
+                  {showStats ? "非表示 ▲" : "表示 ▼"}
+                </button>
+              </div>
             </div>
+            {showStats && (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {stats.map(s => (
+                  <button key={s.status}
+                    onClick={() => { setStatusFilter(statusFilter===s.status ? "all" : s.status); setPage(1); }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
+                      ${statusFilter===s.status
+                        ? `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} ring-2 ring-offset-1 ring-blue-400`
+                        : `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} hover:opacity-80`}`}>
+                    <span className={`w-2 h-2 rounded-full ${s.dot??"bg-gray-400"}`} />
+                    {s.status}
+                    <span className="font-bold">{s.count}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2006,11 +2015,6 @@ export default function App() {
               className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="all">全ステータス</option>
               {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select value={assigneeFilter} onChange={e => { setAssigneeFilter(e.target.value); setPage(1); }}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="all">全担当者</option>
-              {assignees.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
         </div>
