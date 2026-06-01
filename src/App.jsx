@@ -2,10 +2,46 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as XLSX from "xlsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const PASSWORD   = "1111";
-const STORAGE_KEY  = "teppou_records_v3";
+const PASSWORD     = "1111";
+const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
-const PAGE_SIZE  = 100;
+const PAGE_SIZE    = 100;
+const IDB_NAME     = "teppou_idb";
+const IDB_VER      = 1;
+const IDB_STORE    = "records";
+
+// ── IndexedDB helpers ──────────────────────────────────────────────────────────
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(IDB_STORE))
+        db.createObjectStore(IDB_STORE, { keyPath: "id" });
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbGetAll() {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbPutAll(records) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const tx    = db.transaction(IDB_STORE, "readwrite");
+    const store = tx.objectStore(IDB_STORE);
+    store.clear();
+    records.forEach(r => store.put(r));
+    tx.oncomplete = res;
+    tx.onerror    = e => rej(e.target.error);
+  });
+}
 
 const IS_MEMBERS = [
   "櫻井　肇","上浦　諒大","井上　妃音","太田　小百合","十文字　菜月",
@@ -1113,20 +1149,43 @@ export default function App() {
   const colDropRef = useRef();
 
   // ── Persistence ──────────────────────────────────────────────────────────────
+  // 初回ロード: IndexedDB → なければ localStorage から移行
   useEffect(() => {
-    try { const s = localStorage.getItem(STORAGE_KEY);  if (s) setRecords(JSON.parse(s));  } catch {}
+    idbGetAll().then(recs => {
+      if (recs.length > 0) {
+        setRecords(recs);
+      } else {
+        // localStorage からの移行
+        try {
+          const s = localStorage.getItem(STORAGE_KEY);
+          if (s) {
+            const parsed = JSON.parse(s);
+            setRecords(parsed);
+            idbPutAll(parsed).then(() => localStorage.removeItem(STORAGE_KEY));
+          }
+        } catch {}
+      }
+    }).catch(() => {
+      // IndexedDB 使用不可の場合は localStorage にフォールバック
+      try { const s = localStorage.getItem(STORAGE_KEY); if (s) setRecords(JSON.parse(s)); } catch {}
+    });
     try { const s = localStorage.getItem(SETTINGS_KEY); if (s) setSettings(JSON.parse(s)); } catch {}
   }, []);
 
+  // records 変更時: IndexedDB に保存（500ms デバウンス）
+  const idbSaveTimer = useRef(null);
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-      setStorageWarning(false);
-    } catch (e) {
-      // QuotaExceededError: データが大きすぎてlocalStorageに保存できない
-      setStorageWarning(true);
-    }
+    if (idbSaveTimer.current) clearTimeout(idbSaveTimer.current);
+    idbSaveTimer.current = setTimeout(() => {
+      idbPutAll(records).then(() => setStorageWarning(false)).catch(() => {
+        // IndexedDB 失敗時は localStorage にフォールバック
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); setStorageWarning(false); }
+        catch { setStorageWarning(true); }
+      });
+    }, 500);
+    return () => clearTimeout(idbSaveTimer.current);
   }, [records]);
+
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }, [settings]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
@@ -1269,11 +1328,11 @@ export default function App() {
         {/* ── Storage warning ── */}
         {storageWarning && (
           <div className="bg-orange-50 border border-orange-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-orange-700 shrink-0">⚠️ ストレージ上限超過</span>
+            <span className="text-sm font-semibold text-orange-700 shrink-0">⚠️ 保存エラー</span>
             <span className="text-xs text-orange-600">
-              データが多すぎてブラウザに保存できません（上限約5MB）。このセッション中は動作しますが、
-              <strong>ページを閉じるとデータが消えます。</strong>
-              不要なデータを削除するか、重複クレンジングをお試しください。
+              ブラウザへのデータ保存に失敗しました。
+              <strong>ページを閉じるとデータが消える可能性があります。</strong>
+              プライベートブラウズモードを使用している場合はオフにしてください。
             </span>
           </div>
         )}
