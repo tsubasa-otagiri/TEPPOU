@@ -1470,65 +1470,139 @@ function AnalysisView({ records }) {
   );
 }
 
-// ── PullListModal ───────────────────────────────────────────────────────────────
-function PullListModal({ records, onClose }) {
-  const NEGO = ["0.日程調整","1.高確度","2.優先","4.商談中","9.アポ獲得"];
-  const [sel, setSel] = useState(new Set(NEGO));
-  const toggle = s => setSel(p=>{ const n=new Set(p); n.has(s)?n.delete(s):n.add(s); return n; });
+// ── PullView ────────────────────────────────────────────────────────────────────
+function PullView({ records }) {
+  const [inputText, setInputText] = useState("");
+  const [results,   setResults]   = useState(null);
+  const today = getToday();
+  const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
 
-  const filtered = records.filter(r => sel.has(r.status));
-
-  const download = () => {
-    const headers = ALL_COLUMNS.map(c=>c.label);
-    const rows = filtered.map(r => ALL_COLUMNS.map(c=>{
-      const v = r[c.key]??"";
-      if(c.key==="lastCallDate"||c.key==="nextCallDate") return fmtDate(normDate(String(v)));
-      return String(v);
-    }));
-    const bom="﻿";
-    const csv=bom+[headers,...rows].map(row=>
-      row.map(c=>(c.includes(",")||c.includes('"'))?`"${c.replace(/"/g,'""')}"`:c).join(",")
-    ).join("\r\n");
-    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download=`TEPPOU_過去商談プルリスト_${getToday().replace(/-/g,"")}.csv`; a.click();
-    URL.revokeObjectURL(url);
+  const getAction = rec => {
+    if (!rec) return { label:"❓ リスト未登録",   color:"text-slate-400",  bg:"" };
+    if (["8.不要","8.当社契約"].includes(rec.status))
+                   return { label:"✅ 対応不要",     color:"text-slate-400",  bg:"bg-slate-50" };
+    if (["9.アポ獲得","0.日程調整","1.高確度"].includes(rec.status))
+                   return { label:"🎯 商談フォロー", color:"text-teal-700",   bg:"bg-teal-50" };
+    const nd = normDate(rec.nextCallDate);
+    if (nd && nd < today)  return { label:"🔴 至急架電",    color:"text-red-700",   bg:"bg-red-50" };
+    if (nd && nd <= soon)  return { label:"⚠️ 近日架電",    color:"text-amber-700", bg:"bg-amber-50" };
+    if (nd)                return { label:"📅 架電予定あり", color:"text-blue-700",  bg:"bg-blue-50" };
+    return                        { label:"📞 架電日未設定", color:"text-orange-600",bg:"bg-orange-50" };
   };
 
+  const doMatch = () => {
+    const names = inputText.split(/[\r\n]+/)
+      .flatMap(line => line.split(/[\t,]/).map(s=>s.trim()))
+      .filter(Boolean);
+    setResults(names.map(name => {
+      const norm = normName(name);
+      const matched = records.filter(r => {
+        const rn = normName(r.companyName);
+        return rn === norm || rn.includes(norm) || norm.includes(rn);
+      });
+      return { name, matched };
+    }));
+  };
+
+  const matched   = results ? results.filter(r=>r.matched.length>0).length : 0;
+  const unmatched = results ? results.filter(r=>r.matched.length===0).length : 0;
+
+  const ACTION_ORDER = ["🔴 至急架電","⚠️ 近日架電","📞 架電日未設定","📅 架電予定あり","🎯 商談フォロー","✅ 対応不要","❓ リスト未登録"];
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-slate-800">📤 過去商談プルリスト作成</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
-        </div>
-        <p className="text-xs text-slate-500 mb-4">対象ステータスを選んでCSVを出力します。</p>
-        <div className="space-y-1 max-h-72 overflow-y-auto mb-4 pr-1">
-          {Object.entries(STATUS_CFG).map(([s,cfg])=>(
-            <label key={s} className="flex items-center gap-3 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
-              <input type="checkbox" checked={sel.has(s)} onChange={()=>toggle(s)}
-                className="rounded border-slate-300 text-blue-600" />
-              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
-              <span className="text-sm text-slate-700 flex-1">{s}</span>
-              <span className="text-xs text-slate-400 shrink-0">{records.filter(r=>r.status===s).length}件</span>
-            </label>
-          ))}
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 mb-4">
-          <span className="text-sm text-blue-700">対象: <strong>{filtered.length.toLocaleString()}件</strong></span>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">閉じる</button>
-          <button onClick={download} disabled={filtered.length===0}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 transition-colors">
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            CSVダウンロード
+    <div className="space-y-4">
+      {/* 入力パネル */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-1">過去商談プルリスト 照合</h3>
+        <p className="text-xs text-slate-400 mb-3">企業名を1行ずつ貼り付けると、現在のステータス・アクションを自動判定します。</p>
+        <textarea
+          value={inputText}
+          onChange={e=>{ setInputText(e.target.value); setResults(null); }}
+          placeholder={"株式会社〇〇\n株式会社△△\n（Excelからのコピペも可）"}
+          rows={6}
+          className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none font-mono placeholder:text-slate-300"
+        />
+        <div className="flex justify-between items-center mt-2">
+          <span className="text-xs text-slate-400">
+            {inputText.trim() ? `${inputText.trim().split(/[\r\n]+/).filter(Boolean).length} 行入力中` : ""}
+          </span>
+          <button onClick={doMatch} disabled={!inputText.trim()}
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg disabled:opacity-40 transition-colors">
+            照合する
           </button>
         </div>
       </div>
+
+      {/* 結果サマリー */}
+      {results && (
+        <div className="grid grid-cols-3 gap-3 text-center">
+          {[
+            { label:"照合対象",  value:results.length,  color:"text-slate-700",  bg:"bg-white" },
+            { label:"マッチ",    value:matched,          color:"text-blue-700",   bg:"bg-blue-50" },
+            { label:"未登録",    value:unmatched,        color:"text-slate-400",  bg:"bg-slate-50" },
+          ].map(k=>(
+            <div key={k.label} className={`${k.bg} rounded-xl border border-slate-200 py-3`}>
+              <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{k.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 結果テーブル */}
+      {results && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {["企業名（入力）","マッチ企業名","状況","架電日","次回架電日","担当者","メモ","アクション"].map(h=>(
+                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {results
+                  .slice()
+                  .sort((a,b)=>{
+                    const la = a.matched.length ? ACTION_ORDER.indexOf(getAction(a.matched[0]).label) : ACTION_ORDER.length-1;
+                    const lb = b.matched.length ? ACTION_ORDER.indexOf(getAction(b.matched[0]).label) : ACTION_ORDER.length-1;
+                    return la - lb;
+                  })
+                  .flatMap((res, i) => {
+                    if (res.matched.length === 0) {
+                      const act = getAction(null);
+                      return [(
+                        <tr key={`u${i}`} className="hover:bg-slate-50/60">
+                          <td className="px-3 py-2.5 text-slate-600 font-medium">{res.name}</td>
+                          <td className="px-3 py-2.5 text-slate-300 italic">未登録</td>
+                          <td colSpan={5} className="px-3 py-2.5 text-slate-300">—</td>
+                          <td className={`px-3 py-2.5 font-semibold ${act.color}`}>{act.label}</td>
+                        </tr>
+                      )];
+                    }
+                    return res.matched.map((rec, j) => {
+                      const act = getAction(rec);
+                      return (
+                        <tr key={`m${i}-${j}`} className={`hover:brightness-95 ${act.bg}`}>
+                          <td className="px-3 py-2.5 text-slate-500">{j===0 ? res.name : ""}</td>
+                          <td className="px-3 py-2.5 font-semibold text-slate-800">{rec.companyName}</td>
+                          <td className="px-3 py-2.5"><StatusBadge status={rec.status}/></td>
+                          <td className="px-3 py-2.5 text-slate-600">{fmtDate(normDate(rec.lastCallDate))||"—"}</td>
+                          <td className="px-3 py-2.5 text-slate-600">{fmtDate(normDate(rec.nextCallDate))||"—"}</td>
+                          <td className="px-3 py-2.5 text-slate-600">{rec.assignee||"—"}</td>
+                          <td className="px-3 py-2.5 text-slate-500 max-w-48 truncate" title={rec.memo||""}>{rec.memo||"—"}</td>
+                          <td className={`px-3 py-2.5 font-bold whitespace-nowrap ${act.color}`}>{act.label}</td>
+                        </tr>
+                      );
+                    });
+                  })
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1766,7 +1840,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 分析"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 分析"],["pull","🔍 プル照合"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -1777,6 +1851,9 @@ export default function App() {
 
         {/* ── Analysis view ── */}
         {view==="analysis" && <AnalysisView records={records} />}
+
+        {/* ── Pull view ── */}
+        {view==="pull" && <PullView records={records} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
@@ -1885,15 +1962,6 @@ export default function App() {
                 </div>
               )}
             </div>
-
-            {/* Pull list */}
-            <button onClick={() => setShowPullList(true)}
-              className="flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-              </svg>
-              プルリスト作成
-            </button>
 
             {/* New record */}
             <button onClick={() => setShowNew(true)}
@@ -2084,9 +2152,6 @@ export default function App() {
       </div>
 
       {/* ── Modals ── */}
-      {showPullList && (
-        <PullListModal records={records} onClose={() => setShowPullList(false)} />
-      )}
       {showSettings && (
         <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)} />
       )}
