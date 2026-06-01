@@ -168,10 +168,14 @@ function convertMitelStatus(callType, tags) {
   return null;
 }
 
-function normName(s) { return String(s||"").replace(/[\s　]/g,"").toLowerCase(); }
-function genId()     { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
-function getToday()  { return new Date().toISOString().slice(0,10); }
-function nowIso()    { return new Date().toISOString(); }
+function normName(s)    { return String(s||"").replace(/[\s　]/g,"").toLowerCase(); }
+function genId()        { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
+function getToday()     { return new Date().toISOString().slice(0,10); }
+function nowIso()       { return new Date().toISOString(); }
+// 表示用: YYYY-MM-DD → YYYY/MM/DD
+function fmtDate(d)     { return d ? d.replace(/-/g, "/") : "—"; }
+// 比較用: YYYY/MM/DD → YYYY-MM-DD（スラッシュ混在を吸収）
+function normDate(d)    { return d ? String(d).replace(/\//g, "-").slice(0, 10) : ""; }
 
 // ── StatusBadge ────────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -752,8 +756,8 @@ function ImportModal({ onImport, onClose }) {
         facebook:      g("facebook"),
         twitter:       g("twitter"),
         os:            g("os"),
-        nextCallDate:  g("nextCallDate"),
-        lastCallDate:  g("lastCallDate"),
+        nextCallDate:  normDate(g("nextCallDate")),
+        lastCallDate:  normDate(g("lastCallDate")),
         importedAt: nowIso(), updatedAt: nowIso(), source:"csv",
       });
     }
@@ -1127,8 +1131,18 @@ function RecordFormModal({ initial, title, onSave, onClose }) {
 
             {/* 架電管理 */}
             <SectionLabel>架電管理</SectionLabel>
-            {txt("lastCallDate",  "架電日",     1, "date")}
-            {txt("nextCallDate",  "次回架電日",  1, "date")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">架電日</label>
+              <input type="date" value={normDate(form.lastCallDate)||""}
+                onChange={e => upd("lastCallDate", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">次回架電日</label>
+              <input type="date" value={normDate(form.nextCallDate)||""}
+                onChange={e => upd("nextCallDate", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">状況</label>
               <select value={form.status||"未架電"} onChange={e => upd("status", e.target.value)}
@@ -1290,7 +1304,7 @@ export default function App() {
 
   const soon = (() => { const d = new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
   const doneStatuses = ["8.不要","8.当社契約"];
-  const alerts   = records.filter(r => r.nextCallDate && r.nextCallDate <= soon && !doneStatuses.includes(r.status));
+  const alerts   = records.filter(r => r.nextCallDate && normDate(r.nextCallDate) <= soon && !doneStatuses.includes(r.status));
   const assignees = [...new Set(records.map(r => r.assignee).filter(Boolean))];
   const visibleDefs = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
 
@@ -1404,7 +1418,7 @@ export default function App() {
             <span className="text-sm font-semibold text-amber-700 shrink-0">📅 次回架電日アラート</span>
             {alerts.slice(0,5).map(r => (
               <span key={r.id} className="bg-amber-100 border border-amber-300 text-amber-800 text-xs px-2 py-0.5 rounded-full">
-                {r.companyName}（{r.nextCallDate}）
+                {r.companyName}（{fmtDate(r.nextCallDate)}）
               </span>
             ))}
             {alerts.length > 5 && <span className="text-xs text-amber-600">他 {alerts.length-5} 件</span>}
@@ -1580,13 +1594,17 @@ export default function App() {
                             {rec[col.key]}
                           </a>
                         ) : col.key === "nextCallDate" && rec.nextCallDate ? (
-                          rec.nextCallDate < today
-                            ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{rec.nextCallDate} 🔴</span>
-                            : rec.nextCallDate === today
-                              ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{rec.nextCallDate} ⚠️</span>
-                              : rec.nextCallDate <= soon
-                                ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{rec.nextCallDate} ⏰</span>
-                                : <span className="text-slate-700 text-xs">{rec.nextCallDate}</span>
+                          (() => { const nd = normDate(rec.nextCallDate); return (
+                            nd < today
+                              ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} 🔴</span>
+                              : nd === today
+                                ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⚠️</span>
+                                : nd <= soon
+                                  ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⏰</span>
+                                  : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>
+                          ); })()
+                        ) : col.key === "lastCallDate" && rec.lastCallDate ? (
+                          <span className="text-slate-700 text-xs">{fmtDate(rec.lastCallDate)}</span>
                         ) : col.key === "memo" ? (
                           <span className="text-slate-600 text-xs block max-w-56 truncate" title={rec.memo||""}>
                             {rec.memo || "—"}
