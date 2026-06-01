@@ -7,7 +7,7 @@ const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE    = 100;
 const API_BASE     = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const POLL_MS      = 30_000; // 30秒ポーリング
+const CLICK_REFRESH_COOLDOWN = 30_000; // クリック更新のクールダウン（30秒）
 
 // ── API クライアント ────────────────────────────────────────────────────────────
 async function apiGet(resource) {
@@ -1768,11 +1768,14 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 30秒ポーリング
-  useEffect(() => {
+  // クリック時に更新（30秒クールダウン）
+  const lastFetchTimeRef = useRef(0);
+  const handleAppClick = useCallback(() => {
     if (!API_BASE) return;
-    const id = setInterval(() => fetchAllFromAPI(), POLL_MS);
-    return () => clearInterval(id);
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < CLICK_REFRESH_COOLDOWN) return;
+    lastFetchTimeRef.current = now;
+    fetchAllFromAPI();
   }, [fetchAllFromAPI]);
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }, [settings]);
@@ -1902,7 +1905,7 @@ export default function App() {
   if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} logo={settings.logo} />;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
+    <div className="min-h-screen bg-slate-50 text-slate-800" onClick={handleAppClick}>
 
       {/* ── Header ── */}
       <header className="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-30">
