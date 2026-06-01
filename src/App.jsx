@@ -613,16 +613,26 @@ function ImportModal({ onImport, onClose }) {
   const [inputMode, setInputMode] = useState("file");   // "file" | "paste"
   const [pasteText, setPasteText] = useState("");
   const [log,       setLog]       = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const [progress,  setProgress]  = useState("");
   const fileRef = useRef();
 
-  const processRows = rows => {
-    try {
-      const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
-      setLog(result);
-      if (result.records && result.records.length > 0) onImport(result.records);
-    } catch (ex) {
-      setLog({ error: `インポートエラー: ${ex.message}`, records: [] });
-    }
+  const processRows = (rows) => {
+    setLoading(true);
+    setProgress(`${rows.length.toLocaleString()} 行を解析中...`);
+    // setTimeout で React にスピナー描画の猶予を与えてからブロック処理
+    setTimeout(() => {
+      try {
+        const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
+        setLog(result);
+        if (result.records?.length > 0) onImport(result.records);
+      } catch (ex) {
+        setLog({ error: `インポートエラー: ${ex.message}`, records: [] });
+      } finally {
+        setLoading(false);
+        setProgress("");
+      }
+    }, 60);
   };
 
   const process = text => processRows(parseCSV(text));
@@ -631,15 +641,25 @@ function ImportModal({ onImport, onClose }) {
     const file = e.target.files[0];
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
+    setLoading(true);
+    setProgress("ファイル読み込み中...");
     if (ext === "xlsx" || ext === "xls") {
       const reader = new FileReader();
       reader.onload = ev => {
-        const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, {
-          header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "",
-        }).map(row => row.map(c => String(c ?? "").trim()));
-        processRows(rows);
+        setProgress("Excelを解析中...");
+        setTimeout(() => {
+          try {
+            const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+            const ws = wb.Sheets[wb.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(ws, {
+              header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "",
+            }).map(row => row.map(c => String(c ?? "").trim()));
+            processRows(rows);
+          } catch (ex) {
+            setLog({ error: `ファイル読み込みエラー: ${ex.message}`, records: [] });
+            setLoading(false); setProgress("");
+          }
+        }, 60);
       };
       reader.readAsArrayBuffer(file);
     } else {
@@ -749,10 +769,20 @@ function ImportModal({ onImport, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 relative">
+
+        {/* Loading overlay */}
+        {loading && (
+          <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center rounded-2xl z-10 gap-3">
+            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-semibold text-slate-700">{progress || "処理中..."}</p>
+            <p className="text-xs text-slate-400">大量データは数秒かかる場合があります</p>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-slate-800">CSVインポート</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+          <h2 className="text-base font-bold text-slate-800">インポート</h2>
+          <button onClick={onClose} disabled={loading} className="text-slate-400 hover:text-slate-700 text-xl leading-none disabled:opacity-30">×</button>
         </div>
 
         {/* Mode selection */}
@@ -1079,6 +1109,7 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
+  const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
   // ── Persistence ──────────────────────────────────────────────────────────────
@@ -1087,8 +1118,16 @@ export default function App() {
     try { const s = localStorage.getItem(SETTINGS_KEY); if (s) setSettings(JSON.parse(s)); } catch {}
   }, []);
 
-  useEffect(() => { localStorage.setItem(STORAGE_KEY,  JSON.stringify(records));  }, [records]);
-  useEffect(() => { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }, [settings]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+      setStorageWarning(false);
+    } catch (e) {
+      // QuotaExceededError: データが大きすぎてlocalStorageに保存できない
+      setStorageWarning(true);
+    }
+  }, [records]);
+  useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }, [settings]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1226,6 +1265,18 @@ export default function App() {
       </header>
 
       <div className="max-w-screen-2xl mx-auto px-4 py-5 space-y-4">
+
+        {/* ── Storage warning ── */}
+        {storageWarning && (
+          <div className="bg-orange-50 border border-orange-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-orange-700 shrink-0">⚠️ ストレージ上限超過</span>
+            <span className="text-xs text-orange-600">
+              データが多すぎてブラウザに保存できません（上限約5MB）。このセッション中は動作しますが、
+              <strong>ページを閉じるとデータが消えます。</strong>
+              不要なデータを削除するか、重複クレンジングをお試しください。
+            </span>
+          </div>
+        )}
 
         {/* ── Alert bar ── */}
         {alerts.length > 0 && (
