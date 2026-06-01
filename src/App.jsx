@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import * as XLSX from "xlsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PASSWORD   = "1111";
@@ -582,9 +583,8 @@ function ImportModal({ onImport, onClose }) {
   const [log,       setLog]       = useState(null);
   const fileRef = useRef();
 
-  const process = text => {
+  const processRows = rows => {
     try {
-      const rows = parseCSV(text);
       const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
       setLog(result);
       if (result.records && result.records.length > 0) onImport(result.records);
@@ -593,12 +593,28 @@ function ImportModal({ onImport, onClose }) {
     }
   };
 
+  const process = text => processRows(parseCSV(text));
+
   const handleFile = e => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => process(ev.target.result);
-    reader.readAsText(file, "UTF-8");
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {
+          header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "",
+        }).map(row => row.map(c => String(c ?? "").trim()));
+        processRows(rows);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => process(ev.target.result);
+      reader.readAsText(file, "UTF-8");
+    }
     e.target.value = "";
   };
 
@@ -771,9 +787,9 @@ function ImportModal({ onImport, onClose }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            <span className="text-sm text-slate-600 font-medium">CSVファイルを選択</span>
-            <span className="text-xs text-slate-400">文字コード: UTF-8 推奨</span>
-            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFile} />
+            <span className="text-sm text-slate-600 font-medium">ファイルを選択</span>
+            <span className="text-xs text-slate-400">Excel (.xlsx) / CSV (.csv) 対応</span>
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFile} />
           </label>
         )}
 
