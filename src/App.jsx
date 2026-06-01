@@ -505,6 +505,37 @@ function SettingsModal({ settings, onSave, onClose }) {
   );
 }
 
+// ── CSV template definitions ───────────────────────────────────────────────────
+const CSV_TEMPLATES = {
+  sales: {
+    filename: "TEPPOU_営業リスト_フォーマット.csv",
+    rows: [
+      ["企業名","電話番号","メールアドレス","GBP/URL","ステータス","担当者","最終架電日","次回架電日","架電回数","メモ/情報"],
+      ["株式会社サンプル","03-0000-0000","sample@example.com","https://example.com","未架電","山田太郎","2026-06-01","2026-06-08","1","サンプルメモ"],
+    ],
+  },
+  metel: {
+    filename: "TEPPOU_ミーてるログ_フォーマット.csv",
+    rows: [
+      ["担当者","企業名","電話番号","通話種別","タグ","架電日時","メモ"],
+      ["櫻井　肇","株式会社サンプル","03-0000-0000","発信（不在）","担当者不在","2026-06-01 10:00:00","サンプルメモ"],
+    ],
+  },
+};
+
+function downloadTemplate(mode) {
+  const tmpl = CSV_TEMPLATES[mode];
+  const bom  = "﻿"; // UTF-8 BOM（Excelで文字化けしないように）
+  const csv  = bom + tmpl.rows.map(row =>
+    row.map(c => (c.includes(",") || c.includes('"') || c.includes("\n")) ? `"${c.replace(/"/g,'""')}"` : c).join(",")
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = tmpl.filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── ImportModal ────────────────────────────────────────────────────────────────
 function ImportModal({ onImport, onClose }) {
   const [mode,      setMode]      = useState("sales");
@@ -642,6 +673,22 @@ function ImportModal({ onImport, onClose }) {
               </div>
             </label>
           ))}
+        </div>
+
+        {/* Template download */}
+        <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-4">
+          <div>
+            <p className="text-xs font-semibold text-slate-700">📄 入力フォーマット（テンプレート）</p>
+            <p className="text-xs text-slate-400 mt-0.5">ダウンロードして記入後、そのままインポートできます</p>
+          </div>
+          <button onClick={() => downloadTemplate(mode)}
+            className="flex items-center gap-1.5 bg-white hover:bg-blue-50 border border-slate-300 hover:border-blue-400 text-slate-700 hover:text-blue-700 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ml-3">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            CSV DL
+          </button>
         </div>
 
         {/* Input mode tabs */}
