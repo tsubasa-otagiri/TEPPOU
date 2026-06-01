@@ -183,6 +183,37 @@ function removeWhiteBg(sourceImg, threshold = 238) {
   return canvas;
 }
 
+// ── Trim transparent edges and scale content to fill canvas ──────────────────
+function trimAndFill(canvas) {
+  const ctx = canvas.getContext("2d");
+  const { width, height } = canvas;
+  const d = ctx.getImageData(0, 0, width, height).data;
+  let x0 = width, y0 = height, x1 = 0, y1 = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (d[(y * width + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x0 >= x1 || y0 >= y1) return; // nothing visible
+  // 5% padding around content
+  const px = Math.max(4, Math.round((x1 - x0) * 0.05));
+  const py = Math.max(4, Math.round((y1 - y0) * 0.05));
+  x0 = Math.max(0, x0 - px); y0 = Math.max(0, y0 - py);
+  x1 = Math.min(width,  x1 + px); y1 = Math.min(height, y1 + py);
+  // Copy cropped region to a temp canvas
+  const tmp = document.createElement("canvas");
+  tmp.width = x1 - x0; tmp.height = y1 - y0;
+  tmp.getContext("2d").drawImage(canvas, x0, y0, x1 - x0, y1 - y0, 0, 0, tmp.width, tmp.height);
+  // Scale back to fill original canvas
+  ctx.clearRect(0, 0, width, height);
+  ctx.drawImage(tmp, 0, 0, width, height);
+}
+
 // ── CropModal ──────────────────────────────────────────────────────────────────
 function CropModal({ src, onCrop, onClose }) {
   const [loaded,   setLoaded]   = useState(false);
@@ -337,6 +368,7 @@ function CropModal({ src, onCrop, onClose }) {
     const sx  = natSize.w / dispSize.w;
     const sy  = natSize.h / dispSize.h;
     ctx.drawImage(imgRef.current, box.x*sx, box.y*sy, box.w*sx, box.h*sy, 0, 0, OUT, OUT);
+    trimAndFill(c); // 透明余白を自動トリミングしてコンテンツを拡大
     onCrop(c.toDataURL("image/png"));
     onClose();
   };
@@ -1063,6 +1095,8 @@ export default function App() {
     if (!settings.favicon) return;
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
+    link.type = "image/png";
+    link.setAttribute("sizes", "512x512");
     link.href = settings.favicon;
   }, [settings.favicon]);
 
