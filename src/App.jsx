@@ -95,7 +95,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1221,6 +1221,192 @@ function RecordFormModal({ initial, title, onSave, onClose }) {
   );
 }
 
+// ── AnalysisView ───────────────────────────────────────────────────────────────
+function AnalysisView({ records }) {
+  const today = getToday();
+  const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+
+  const kpis = [
+    { label:"総件数",      value: records.length,                                                                               color:"text-blue-600",   bg:"bg-blue-50"   },
+    { label:"本日架電予定", value: records.filter(r=>normDate(r.nextCallDate)===today).length,                                    color:"text-amber-600",  bg:"bg-amber-50"  },
+    { label:"3日以内期限",  value: records.filter(r=>{ const nd=normDate(r.nextCallDate); return nd>today&&nd<=soon; }).length,   color:"text-yellow-600", bg:"bg-yellow-50" },
+    { label:"商談/アポ",    value: records.filter(r=>["0.日程調整","1.高確度","4.商談中","9.アポ獲得"].includes(r.status)).length, color:"text-teal-600",   bg:"bg-teal-50"   },
+  ];
+
+  const statusMap = {};
+  records.forEach(r => { statusMap[r.status]=(statusMap[r.status]||0)+1; });
+  const maxSt = Math.max(...Object.values(statusMap),1);
+  const statusData = Object.keys(STATUS_CFG)
+    .map(s => ({ status:s, count:statusMap[s]||0, cfg:STATUS_CFG[s] }))
+    .filter(d=>d.count>0).sort((a,b)=>b.count-a.count);
+
+  const assigneeMap={};
+  records.forEach(r=>{ const a=r.assignee||"未設定"; assigneeMap[a]=(assigneeMap[a]||0)+1; });
+  const assigneeData=Object.entries(assigneeMap).sort((a,b)=>b[1]-a[1]);
+
+  const indMap={};
+  records.forEach(r=>{ if(r.industry) indMap[r.industry]=(indMap[r.industry]||0)+1; });
+  const indData=Object.entries(indMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+
+  const storeRanges=[["1店舗",1,1],["2〜5店舗",2,5],["6〜10店舗",6,10],["11〜50店舗",11,50],["51店舗以上",51,Infinity]];
+  const storeData=storeRanges.map(([label,lo,hi])=>({
+    label, count:records.filter(r=>{ const n=parseInt(r.storeCount)||0; return n>=lo&&n<=hi; }).length
+  })).filter(d=>d.count>0);
+  const maxStore=Math.max(...storeData.map(d=>d.count),1);
+
+  const Card=({label,value,color,bg})=>(
+    <div className={`${bg} rounded-xl border border-slate-200 p-4 text-center`}>
+      <div className={`text-3xl font-bold ${color}`}>{value.toLocaleString()}</div>
+      <div className="text-xs text-slate-500 mt-1">{label}</div>
+    </div>
+  );
+  const Bar=({count,max,colorClass})=>(
+    <div className="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+      <div className={`h-full rounded-full transition-all ${colorClass}`}
+        style={{width:`${Math.max(2,count/max*100)}%`}} />
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {kpis.map(k=><Card key={k.label} {...k}/>)}
+      </div>
+
+      {/* ステータス別 */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-semibold text-slate-700 mb-4">ステータス別件数</h3>
+        <div className="space-y-2">
+          {statusData.map(d=>(
+            <div key={d.status} className="flex items-center gap-2">
+              <span className="text-xs text-slate-600 w-32 shrink-0 truncate">{d.status}</span>
+              <Bar count={d.count} max={maxSt} colorClass={d.cfg?.dot??"bg-slate-400"} />
+              <span className="text-xs font-bold text-slate-700 w-14 text-right shrink-0">{d.count.toLocaleString()}</span>
+              <span className="text-xs text-slate-400 w-9 text-right shrink-0">{Math.round(d.count/records.length*100)}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 担当者別 */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">担当者別件数</h3>
+          <table className="w-full text-xs">
+            <thead><tr className="text-slate-400 border-b border-slate-100 text-left">
+              <th className="pb-2">担当者</th><th className="pb-2 text-right">件数</th><th className="pb-2 text-right">割合</th>
+            </tr></thead>
+            <tbody>
+              {assigneeData.map(([name,count])=>(
+                <tr key={name} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-1.5 text-slate-700">{name}</td>
+                  <td className="py-1.5 text-right font-semibold text-slate-700">{count.toLocaleString()}</td>
+                  <td className="py-1.5 text-right text-slate-400">{Math.round(count/records.length*100)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 業種別 */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">業種別件数（上位10）</h3>
+          {indData.length===0 ? <p className="text-xs text-slate-400">業種データなし</p> : (
+            <div className="space-y-2">
+              {indData.map(([name,count])=>(
+                <div key={name} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-600 flex-1 truncate">{name}</span>
+                  <Bar count={count} max={indData[0][1]} colorClass="bg-blue-400" />
+                  <span className="text-xs font-semibold text-slate-700 w-8 text-right shrink-0">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 店舗数分布 */}
+      {storeData.length>0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">店舗数分布</h3>
+          <div className="space-y-2">
+            {storeData.map(d=>(
+              <div key={d.label} className="flex items-center gap-2">
+                <span className="text-xs text-slate-600 w-28 shrink-0">{d.label}</span>
+                <Bar count={d.count} max={maxStore} colorClass="bg-emerald-400" />
+                <span className="text-xs font-semibold text-slate-700 w-12 text-right shrink-0">{d.count.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PullListModal ───────────────────────────────────────────────────────────────
+function PullListModal({ records, onClose }) {
+  const NEGO = ["0.日程調整","1.高確度","2.優先","4.商談中","9.アポ獲得"];
+  const [sel, setSel] = useState(new Set(NEGO));
+  const toggle = s => setSel(p=>{ const n=new Set(p); n.has(s)?n.delete(s):n.add(s); return n; });
+
+  const filtered = records.filter(r => sel.has(r.status));
+
+  const download = () => {
+    const headers = ALL_COLUMNS.map(c=>c.label);
+    const rows = filtered.map(r => ALL_COLUMNS.map(c=>{
+      const v = r[c.key]??"";
+      if(c.key==="lastCallDate"||c.key==="nextCallDate") return fmtDate(normDate(String(v)));
+      return String(v);
+    }));
+    const bom="﻿";
+    const csv=bom+[headers,...rows].map(row=>
+      row.map(c=>(c.includes(",")||c.includes('"'))?`"${c.replace(/"/g,'""')}"`:c).join(",")
+    ).join("\r\n");
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=`TEPPOU_過去商談プルリスト_${getToday().replace(/-/g,"")}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-bold text-slate-800">📤 過去商談プルリスト作成</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <p className="text-xs text-slate-500 mb-4">対象ステータスを選んでCSVを出力します。</p>
+        <div className="space-y-1 max-h-72 overflow-y-auto mb-4 pr-1">
+          {Object.entries(STATUS_CFG).map(([s,cfg])=>(
+            <label key={s} className="flex items-center gap-3 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
+              <input type="checkbox" checked={sel.has(s)} onChange={()=>toggle(s)}
+                className="rounded border-slate-300 text-blue-600" />
+              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${cfg.dot}`} />
+              <span className="text-sm text-slate-700 flex-1">{s}</span>
+              <span className="text-xs text-slate-400 shrink-0">{records.filter(r=>r.status===s).length}件</span>
+            </label>
+          ))}
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2.5 mb-4">
+          <span className="text-sm text-blue-700">対象: <strong>{filtered.length.toLocaleString()}件</strong></span>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">閉じる</button>
+          <button onClick={download} disabled={filtered.length===0}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            CSVダウンロード
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   const [loggedIn,       setLoggedIn]       = useState(() => sessionStorage.getItem("teppou_auth")==="1");
@@ -1238,6 +1424,8 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
+  const [view,           setView]           = useState("list");   // "list" | "analysis"
+  const [showPullList,   setShowPullList]   = useState(false);
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -1417,7 +1605,24 @@ export default function App() {
         </div>
       </header>
 
-      <div className="max-w-screen-2xl mx-auto px-4 py-5 space-y-4">
+      <div className="max-w-screen-2xl mx-auto px-4 pt-3 pb-5 space-y-4">
+
+        {/* ── Page tabs ── */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+          {[["list","📋 リスト"],["analysis","📊 分析"]].map(([v,label])=>(
+            <button key={v} onClick={()=>setView(v)}
+              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
+                ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Analysis view ── */}
+        {view==="analysis" && <AnalysisView records={records} />}
+
+        {/* ── List view ── */}
+        {view==="list" && <>
 
         {/* ── Storage warning ── */}
         {storageWarning && (
@@ -1523,6 +1728,15 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Pull list */}
+            <button onClick={() => setShowPullList(true)}
+              className="flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              プルリスト作成
+            </button>
 
             {/* New record */}
             <button onClick={() => setShowNew(true)}
@@ -1682,9 +1896,14 @@ export default function App() {
             )}
           </div>
         </div>
+
+        </> /* end list view */}
       </div>
 
       {/* ── Modals ── */}
+      {showPullList && (
+        <PullListModal records={records} onClose={() => setShowPullList(false)} />
+      )}
       {showSettings && (
         <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)} />
       )}
