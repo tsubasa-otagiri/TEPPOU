@@ -1,9 +1,12 @@
-name: Deploy to Cloudflare
+name: Deploy
 
 on:
   push:
     branches:
       - main
+
+permissions:
+  contents: write
 
 jobs:
   deploy:
@@ -26,14 +29,27 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
+      # ── GitHub Pages（常時デプロイ） ───────────────────────────────────────────
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+
+      # ── Cloudflare Worker（CLOUDFLARE_API_TOKEN が設定済みの場合のみ） ─────────
       - name: Deploy Worker
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: deploy
+        continue-on-error: true
 
-      - name: Deploy Pages
+      # ── Cloudflare Pages（CLOUDFLARE_API_TOKEN が設定済みの場合のみ） ──────────
+      - name: Deploy to Cloudflare Pages
+        if: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           command: pages deploy ./dist --project-name=teppou
+        continue-on-error: true
