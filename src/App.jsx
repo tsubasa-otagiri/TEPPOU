@@ -1632,7 +1632,7 @@ export default function App() {
   const [records,        setRecords]        = useState([]);
   const [settings,       setSettings]       = useState({ logo:null, favicon:null });
   const [search,         setSearch]         = useState("");
-  const [statusFilter,   setStatusFilter]   = useState("all");
+  const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [visibleCols,    setVisibleCols]    = useState(DEFAULT_VISIBLE_COLS);
   const [showColDrop,    setShowColDrop]    = useState(false);
@@ -1648,7 +1648,10 @@ export default function App() {
   const [copiedId,       setCopiedId]       = useState(null);
   const [sortKey,        setSortKey]        = useState(null);
   const [sortDir,        setSortDir]        = useState("asc");
-  const [showStats,      setShowStats]      = useState(true);
+  const ALL_STATUS_KEYS = Object.keys(STATUS_CFG);
+  const toggleStatus = key => setStatusFilterSet(prev => {
+    const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
+  });
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -1714,7 +1717,7 @@ export default function App() {
 
   // ── Derived data ──────────────────────────────────────────────────────────────
   const filtered = records.filter(r => {
-    if (statusFilter !== "all" && r.status !== statusFilter) return false;
+    if (statusFilterSet.size < ALL_STATUS_KEYS.length && !statusFilterSet.has(r.status)) return false;
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
     if (search) {
       const q = search;
@@ -1894,38 +1897,46 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Stats bar ── */}
+        {/* ── Stats bar (multi-select) ── */}
         {stats.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">ステータス別集計</p>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                ステータス別集計
+                <span className="ml-2 font-normal text-slate-300">
+                  （クリックで絞り込み）
+                </span>
+              </p>
               <div className="flex gap-1.5">
-                <button onClick={() => { setStatusFilter("all"); setPage(1); }}
-                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors">
+                <button
+                  onClick={() => { setStatusFilterSet(new Set(ALL_STATUS_KEYS)); setPage(1); }}
+                  className="px-2.5 py-1 text-xs border border-blue-300 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors">
                   全表示
                 </button>
-                <button onClick={() => setShowStats(v => !v)}
-                  className="px-2.5 py-1 text-xs border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 transition-colors">
-                  {showStats ? "非表示 ▲" : "表示 ▼"}
+                <button
+                  onClick={() => { setStatusFilterSet(new Set()); setPage(1); }}
+                  className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg text-slate-400 hover:bg-slate-50 transition-colors">
+                  全非表示
                 </button>
               </div>
             </div>
-            {showStats && (
-              <div className="flex flex-wrap gap-2 mt-1">
-                {stats.map(s => (
+            <div className="flex flex-wrap gap-2">
+              {stats.map(s => {
+                const active = statusFilterSet.has(s.status);
+                return (
                   <button key={s.status}
-                    onClick={() => { setStatusFilter(statusFilter===s.status ? "all" : s.status); setPage(1); }}
+                    onClick={() => { toggleStatus(s.status); setPage(1); }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all
-                      ${statusFilter===s.status
-                        ? `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} ring-2 ring-offset-1 ring-blue-400`
-                        : `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"} hover:opacity-80`}`}>
-                    <span className={`w-2 h-2 rounded-full ${s.dot??"bg-gray-400"}`} />
-                    {s.status}
-                    <span className="font-bold">{s.count}</span>
+                      ${active
+                        ? `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"}`
+                        : "bg-white text-slate-300 border-slate-200"}`}>
+                    <span className={`w-2 h-2 rounded-full transition-colors ${active ? (s.dot??"bg-gray-400") : "bg-slate-200"}`} />
+                    <span className={active ? "" : "line-through"}>{s.status}</span>
+                    <span className={`font-bold ${active ? "" : "text-slate-200"}`}>{s.count}</span>
                   </button>
-                ))}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -2011,11 +2022,6 @@ export default function App() {
                 placeholder="企業名・電話番号・担当者・メモで検索..."
                 className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
-            <select value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
-              className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="all">全ステータス</option>
-              {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
           </div>
         </div>
 
