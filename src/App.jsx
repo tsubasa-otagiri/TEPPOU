@@ -173,9 +173,25 @@ function genId()        { return Date.now().toString(36)+Math.random().toString(
 function getToday()     { return new Date().toISOString().slice(0,10); }
 function nowIso()       { return new Date().toISOString(); }
 // 表示用: YYYY-MM-DD → YYYY/MM/DD
-function fmtDate(d)     { return d ? d.replace(/-/g, "/") : "—"; }
-// 比較用: YYYY/MM/DD → YYYY-MM-DD（スラッシュ混在を吸収）
-function normDate(d)    { return d ? String(d).replace(/\//g, "-").slice(0, 10) : ""; }
+function fmtDate(d) { return d ? d.replace(/-/g, "/") : "—"; }
+// 正規化: 様々な日付文字列 → YYYY-MM-DD
+function normDate(d) {
+  if (!d) return "";
+  const s = String(d).trim();
+  if (!s) return "";
+  // YYYY-MM-DD / YYYY/MM/DD（正常系）
+  if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(s)) return s.replace(/\//g, "-");
+  // YYYY/M/D（単桁あり）
+  const ymd = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (ymd) return `${ymd[1]}-${ymd[2].padStart(2,"0")}-${ymd[3].padStart(2,"0")}`;
+  // M/D/YY または M/D/YYYY（US形式）
+  const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdy) {
+    const yr = mdy[3].length === 2 ? (parseInt(mdy[3]) <= 50 ? "20" : "19") + mdy[3] : mdy[3];
+    return `${yr}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
+  }
+  return s.slice(0, 10).replace(/\//g, "-");
+}
 
 // ── StatusBadge ────────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -694,8 +710,11 @@ function ImportModal({ onImport, onClose }) {
             const wb = XLSX.read(ev.target.result, { type: "array", cellDates: true });
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, {
-              header: 1, raw: false, dateNF: "yyyy-mm-dd", defval: "",
-            }).map(row => row.map(c => String(c ?? "").trim()));
+              header: 1, raw: true, defval: "",
+            }).map(row => row.map(c => {
+              if (c instanceof Date) return c.toISOString().slice(0, 10); // Date型→YYYY-MM-DD
+              return String(c ?? "").trim();
+            }));
             processRows(rows);
           } catch (ex) {
             setLog({ error: `ファイル読み込みエラー: ${ex.message}`, records: [] });
