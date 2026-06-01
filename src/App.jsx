@@ -1510,6 +1510,8 @@ export default function App() {
   const [view,           setView]           = useState("list");   // "list" | "analysis"
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
+  const [sortKey,        setSortKey]        = useState(null);
+  const [sortDir,        setSortDir]        = useState("asc");
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -1586,8 +1588,18 @@ export default function App() {
     return true;
   });
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  const sortedFiltered = sortKey
+    ? [...filtered].sort((a, b) => {
+        let va = a[sortKey] ?? "", vb = b[sortKey] ?? "";
+        if (sortKey === "lastCallDate" || sortKey === "nextCallDate") { va = normDate(va); vb = normDate(vb); }
+        if (sortKey === "storeCount") { va = parseInt(va)||0; vb = parseInt(vb)||0; return sortDir==="asc" ? va-vb : vb-va; }
+        const cmp = String(va).localeCompare(String(vb), "ja");
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filtered;
+
+  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
+  const paginated  = sortedFiltered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
   const statsMap = {};
   records.forEach(r => { statsMap[r.status] = (statsMap[r.status]||0) + 1; });
@@ -1733,7 +1745,7 @@ export default function App() {
             <span className="text-sm font-semibold text-amber-700 shrink-0">📅 次回架電日アラート</span>
             {alerts.slice(0,5).map(r => (
               <span key={r.id} className="bg-amber-100 border border-amber-300 text-amber-800 text-xs px-2 py-0.5 rounded-full">
-                {r.companyName}（{fmtDate(r.nextCallDate)}）
+                {r.companyName}（{fmtDate(normDate(r.nextCallDate))}）
               </span>
             ))}
             {alerts.length > 5 && <span className="text-xs text-amber-600">他 {alerts.length-5} 件</span>}
@@ -1884,8 +1896,19 @@ export default function App() {
                       className="rounded border-slate-300 text-blue-600" />
                   </th>
                   {visibleDefs.map(col => (
-                    <th key={col.key} className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">
-                      {col.label}
+                    <th key={col.key}
+                      onClick={() => {
+                        if (sortKey === col.key) setSortDir(d => d==="asc" ? "desc" : "asc");
+                        else { setSortKey(col.key); setSortDir("asc"); }
+                        setPage(1);
+                      }}
+                      className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors">
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {sortKey === col.key
+                          ? <span className="text-blue-500">{sortDir==="asc" ? "▲" : "▼"}</span>
+                          : <span className="text-slate-300">⇅</span>}
+                      </span>
                     </th>
                   ))}
                   <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">操作</th>
@@ -1973,8 +1996,8 @@ export default function App() {
           {/* ── Pagination ── */}
           <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
             <span className="text-xs text-slate-400">
-              {filtered.length > 0
-                ? `${filtered.length}件中 ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE, filtered.length)} 件表示（全${records.length}件）`
+              {sortedFiltered.length > 0
+                ? `${sortedFiltered.length}件中 ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE, sortedFiltered.length)} 件表示（全${records.length}件）`
                 : `全${records.length}件`}
             </span>
             {totalPages > 1 && (
