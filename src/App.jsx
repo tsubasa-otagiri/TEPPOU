@@ -40,7 +40,11 @@ const ALL_COLUMNS = [
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  return text.trim().split(/\r?\n/).map(line => {
+  const lines = text.trim().split(/\r?\n/);
+  // タブが含まれていればTSV（スプレッドシートのコピペ）として処理
+  const isTab = lines[0].includes("\t");
+  return lines.map(line => {
+    if (isTab) return line.split("\t").map(c => c.trim());
     const cells = []; let inQ = false, cell = "";
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
@@ -62,16 +66,16 @@ function mapSalesHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = h.replace(/[\s　]/g,"").toLowerCase();
-    if      (/企業名|会社名|法人名/.test(n))              m.companyName  = i;
-    else if (/電話|tel|phone/.test(n))                    m.phone        = i;
-    else if (/メール|mail|email/.test(n))                 m.email        = i;
-    else if (/url|サイト|gbp|ホームページ/.test(n))        m.url          = i;
-    else if (/メモ|備考|note|コメント|情報/.test(n))        m.memo         = i;
-    else if (/担当者?名?|営業担当/.test(n))                m.assignee     = i;
-    else if (/ステータス|状態/.test(n))                    m.status       = i;
-    else if (/次回架電|次架電|コールバック/.test(n))        m.nextCallDate = i;
-    else if (/最終架電|架電日/.test(n))                    m.lastCallDate = i;
-    else if (/架電回数|コール回数/.test(n))                m.callCount    = i;
+    if      (/企業名|会社名|法人名/.test(n))                      m.companyName  = i;
+    else if (/電話|tel|phone/.test(n))                            m.phone        = i;
+    else if (/メアド|メール|mail|email/.test(n))                   m.email        = i;
+    else if (/gbpサイト|url|サイト|gbp|ホームページ|hp/.test(n))   m.url          = i;
+    else if (/簡易|メモ|備考|note|コメント|情報/.test(n))           m.memo         = i;
+    else if (/担当者?名?|営業担当/.test(n))                        m.assignee     = i;
+    else if (/ステータス|状態|状況/.test(n))                       m.status       = i;
+    else if (/次回架電|次架電|コールバック/.test(n))                m.nextCallDate = i;
+    else if (/最終架電|架電日/.test(n))                            m.lastCallDate = i;
+    else if (/架電回数|コール回数/.test(n))                        m.callCount    = i;
   });
   return m;
 }
