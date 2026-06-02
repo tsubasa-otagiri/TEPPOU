@@ -232,6 +232,7 @@ const ALL_COLUMNS = [
   { key:"assignee",      label:"担当者",                              required:false },
   { key:"createdBy",     label:"追加者",                              required:false },
   { key:"otherContact",  label:"別担当者",                            required:false },
+  { key:"importMonth",   label:"取込月",                              required:false },
   { key:"department",    label:"部署",                                required:false },
   { key:"absenceReason", label:"不在理由",                            required:false },
   { key:"gbpManagement", label:"GBPの管理",                           required:false },
@@ -252,7 +253,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","absenceReason","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","absenceReason","importMonth","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -1067,10 +1068,9 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       const callType = cCallType >= 0 ? (row[cCallType]||"").trim() : "";
       const tags     = cTags     >= 0 ? (row[cTags]    ||"").trim() : "";
       const status   = convertMitelStatus(callType, tags); // null可（情報不足時は更新しない）
-      const dateStr  = `${callMonth}-01`; // 選択した架電月を架電日に設定（CSVの日付より優先）
       const baseMemo = cMemo >= 0 ? (row[cMemo]||"").trim() : "";
       const memo     = tags ? `【MiiTelタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
-      parsed.push({ company, operator, status, lastCallDate: dateStr, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
+      parsed.push({ company, operator, status, importMonth: callMonth, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
     }
     return { success:true, parsed, filtered, skipped };
   }
@@ -1122,10 +1122,10 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
         {/* MiiTel: 架電月の選択 */}
         {mode === "metel" && (
           <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
-            <span className="text-xs font-semibold text-blue-700 shrink-0">📅 架電月</span>
+            <span className="text-xs font-semibold text-blue-700 shrink-0">📅 取込月</span>
             <input type="month" value={callMonth} onChange={e => setCallMonth(e.target.value)}
               className="border border-blue-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-            <span className="text-xs text-blue-600">取り込むログを「<strong>{callMonth.replace("-","/")}</strong> の架電」として架電日に設定します</span>
+            <span className="text-xs text-blue-600">取り込むログを「<strong>{callMonth.replace("-","/")}</strong>」の取込月として記録します</span>
           </div>
         )}
 
@@ -1212,7 +1212,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
             {log.error ? log.error : (
               <span>
                 {log.metel
-                  ? <>✅ MiiTel取込完了（架電月: {callMonth}）: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
+                  ? <>✅ MiiTel取込完了（取込月: {callMonth.replace("-","/")}）: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
                   : log.deals
                   ? <>✅ 過去商談インポート完了: <strong>{log.deals.length}件</strong>（同一企業名は上書き更新）</>
                   : <>✅ インポート完了: <strong>{log.records.length}件</strong>追加</>}
@@ -3082,11 +3082,11 @@ export default function App() {
         const key = normName(p.company);
         const existing = byName.get(key);
         if (existing) {
-          // 既登録: 別担当者・最新架電日を更新（元の担当者は維持）
+          // 既登録: 別担当者・取込月を更新（元の担当者・架電日は維持）
           byName.set(key, {
             ...existing,
             otherContact: p.operator,
-            lastCallDate: p.lastCallDate || existing.lastCallDate,
+            importMonth: p.importMonth || existing.importMonth,
             status: p.status || existing.status,
             updatedAt: nowIso(),
           });
@@ -3100,7 +3100,8 @@ export default function App() {
             assignee: "",
             createdBy: p.operator,      // 追加者
             otherContact: "",
-            lastCallDate: p.lastCallDate || getToday(),
+            importMonth: p.importMonth || "",
+            lastCallDate: "",
             memo: p.memo || "",
             leadAddedDate: getToday(),
             source: "metel",
@@ -3604,6 +3605,14 @@ export default function App() {
                               {Object.keys(ABSENCE_REASON_CFG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           );
+                        } else if (col.key === "importMonth") {
+                          editEl = (
+                            <input type="month" autoFocus defaultValue={rec.importMonth || ""}
+                              className={`${inputCls} w-32`}
+                              onBlur={e    => save(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
+                            />
+                          );
                         } else if (col.key === "lastCallDate" || col.key === "nextCallDate" || col.key === "leadAddedDate") {
                           // 架電日はデフォルトを「本日」、次回架電日・リード追加日は既存値
                           const dateDefault = col.key === "lastCallDate"
@@ -3668,6 +3677,10 @@ export default function App() {
                         } else if (col.key === "absenceReason") {
                           viewEl = val
                             ? <span onClick={openEdit} className="cursor-pointer hover:opacity-80 transition-opacity"><AbsenceReasonBadge reason={val}/></span>
+                            : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
+                        } else if (col.key === "importMonth") {
+                          viewEl = val
+                            ? <span onClick={openEdit} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs font-semibold px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-100 transition-colors">📅 {String(val).replace("-","/")}</span>
                             : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
