@@ -9,6 +9,8 @@ const PAGE_SIZE    = 100;
 const API_BASE        = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 const PAST_DEALS_KEY  = "teppou_past_deals_v1";   // 過去商談プル照合用
 const PAST_MGMT_KEY   = "teppou_past_mgmt_v1";    // 過去商談管理（再アプローチ）
+const UI_KEY          = "teppou_ui_v1";           // 列設定など UI 状態
+const PAST_UI_KEY     = "teppou_past_ui_v1";      // 過去商談の UI 状態
 const CLICK_REFRESH_COOLDOWN = 30_000; // クリック更新のクールダウン（30秒）
 
 // ── API クライアント ────────────────────────────────────────────────────────────
@@ -2214,10 +2216,11 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const [editCell,     setEditCell]     = useState(null);
   const [log,          setLog]          = useState(null);
   const [loading,      setLoading]      = useState(false);
-  const [visibleCols,  setVisibleCols]  = useState(DEFAULT_PAST_VISIBLE);
+  const savedPastUI = (() => { try { return JSON.parse(localStorage.getItem(PAST_UI_KEY) || "{}"); } catch { return {}; } })();
+  const [visibleCols,  setVisibleCols]  = useState(Array.isArray(savedPastUI.visibleCols) && savedPastUI.visibleCols.length ? savedPastUI.visibleCols : DEFAULT_PAST_VISIBLE);
   const [showColDrop,  setShowColDrop]  = useState(false);
-  const [sortKey,      setSortKey]      = useState(null);
-  const [sortDir,      setSortDir]      = useState("asc");
+  const [sortKey,      setSortKey]      = useState(savedPastUI.sortKey ?? null);
+  const [sortDir,      setSortDir]      = useState(savedPastUI.sortDir || "asc");
   const [showDupe,     setShowDupe]     = useState(false);
   const [listModal,    setListModal]    = useState(null); // { name, matched[] }
   const [copiedId,     setCopiedId]     = useState(null);
@@ -2225,6 +2228,11 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const fileRef    = useRef();
   const today = getToday();
   const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+
+  // UI 状態（列設定・ソート）を保存
+  useEffect(() => {
+    try { localStorage.setItem(PAST_UI_KEY, JSON.stringify({ visibleCols, sortKey, sortDir })); } catch {}
+  }, [visibleCols, sortKey, sortDir]);
 
   // 現在リストの企業名セット（照合用）
   const currentNames = useMemo(() =>
@@ -2723,7 +2731,9 @@ export default function App() {
   const [search,         setSearch]         = useState("");
   const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [visibleCols,    setVisibleCols]    = useState(DEFAULT_VISIBLE_COLS);
+  // UI 状態をまとめて localStorage から復元
+  const savedUI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } })();
+  const [visibleCols,    setVisibleCols]    = useState(Array.isArray(savedUI.visibleCols) && savedUI.visibleCols.length ? savedUI.visibleCols : DEFAULT_VISIBLE_COLS);
   const [showColDrop,    setShowColDrop]    = useState(false);
   const [page,           setPage]           = useState(1);
   const [showSettings,   setShowSettings]   = useState(false);
@@ -2733,12 +2743,12 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
-  const [view,           setView]           = useState("list");   // "list" | "analysis"
+  const [view,           setView]           = useState(savedUI.view || "list");   // "list" | "analysis"
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
-  const [sortKey,        setSortKey]        = useState(null);
-  const [sortDir,        setSortDir]        = useState("asc");
+  const [sortKey,        setSortKey]        = useState(savedUI.sortKey ?? null);
+  const [sortDir,        setSortDir]        = useState(savedUI.sortDir || "asc");
   const ALL_STATUS_KEYS = Object.keys(STATUS_CFG);
 
   // STATUS_CFG に追加されたキー（未架電など）が filterSet に入っていない場合に自動補完
@@ -2866,6 +2876,10 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
+  // UI 状態（列設定・ビュー・ソート）を保存
+  useEffect(() => {
+    try { localStorage.setItem(UI_KEY, JSON.stringify({ visibleCols, view, sortKey, sortDir })); } catch {}
+  }, [visibleCols, view, sortKey, sortDir]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
