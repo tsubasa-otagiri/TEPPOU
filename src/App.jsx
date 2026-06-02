@@ -1346,12 +1346,17 @@ const dupePrio = s => DUPE_PRIORITY[s] ?? 50;
 // 優先度→更新日の順でソート（先頭＝残す）
 function sortGroupForDupe(rs) {
   return [...rs].sort((a, b) => {
-    // ① 未架電は最後（削除候補）
+    // ① 当社契約（受注）は最優先で残す
+    const aWon = a.status === "8.当社契約";
+    const bWon = b.status === "8.当社契約";
+    if (aWon !== bWon) return aWon ? -1 : 1;
+
+    // ② 未架電は最後（削除候補）
     const aUncalled = a.status === "未架電";
     const bUncalled = b.status === "未架電";
     if (aUncalled !== bUncalled) return aUncalled ? 1 : -1;
 
-    // ② 未架電以外は架電日（lastCallDate）が新しい順で残す
+    // ③ それ以外は架電日（lastCallDate）が新しい順で残す
     const aDate = normDate(a.lastCallDate) || normDate(a.updatedAt) || (a.importedAt || "");
     const bDate = normDate(b.lastCallDate) || normDate(b.updatedAt) || (b.importedAt || "");
     return bDate.localeCompare(aDate);
