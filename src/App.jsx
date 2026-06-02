@@ -2667,7 +2667,13 @@ export default function App() {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 1500);
     });
-  }, []);
+    // 架電日を本日に自動更新
+    setRecords(p => {
+      const next = p.map(r => r.id === id ? { ...r, lastCallDate: getToday(), updatedAt: nowIso() } : r);
+      syncToAPI(next);
+      return next;
+    });
+  }, [syncToAPI]);
 
   const cleanDuplicates = useCallback(ids => {
     const del = new Set(ids);
