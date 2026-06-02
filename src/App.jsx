@@ -3007,7 +3007,7 @@ export default function App() {
                         className="rounded border-slate-300 text-blue-600" />
                     </td>
                     {visibleDefs.map(col => {
-                      const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key;
+                      const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key && col.key !== "companyName";
                       const openEdit  = () => setEditingCell({ id: rec.id, key: col.key });
                       const save      = (val) => saveInlineValue(rec.id, col.key, val);
                       const cancel    = () => setEditingCell(null);
@@ -3083,26 +3083,24 @@ export default function App() {
                         if (col.key === "companyName") {
                           const pd = findPastDeal(val);
                           viewEl = (
-                            <span className="group flex items-center gap-1 w-full flex-wrap">
-                              <span onClick={openEdit}
-                                className="font-medium text-slate-800 text-xs truncate max-w-40 cursor-pointer hover:text-blue-600 transition-colors">
-                                {val || "—"}
-                              </span>
+                            <button
+                              onClick={() => copyCompanyName(val, rec.id)}
+                              title="クリックでコピー"
+                              className={`group flex items-center gap-1 w-full flex-wrap text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
+                              <span className="font-medium text-xs truncate max-w-40">{val || "—"}</span>
                               {pd && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700 border border-purple-300 whitespace-nowrap">
                                   📜{pd.pastStatus || "過去商談あり"}
                                 </span>
                               )}
-                              <button onClick={e => { e.stopPropagation(); copyCompanyName(val, rec.id); }}
-                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
-                                {copiedId === rec.id
-                                  ? <span className="text-green-500 text-xs">✓</span>
-                                  : <svg className="w-3 h-3 text-slate-300 hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                    </svg>}
-                              </button>
-                            </span>
+                              {copiedId === rec.id
+                                ? <span className="text-green-500 text-xs shrink-0 ml-auto">✓</span>
+                                : <svg className="w-3 h-3 shrink-0 text-slate-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity ml-auto"
+                                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                  </svg>}
+                            </button>
                           );
                         } else if (col.key === "status") {
                           viewEl = <span onClick={openEdit} className="cursor-pointer"><StatusBadge status={val}/></span>;
