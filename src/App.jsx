@@ -2138,7 +2138,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                 return (
                   <tr key={rec.id} className={`hover:bg-slate-50/60 transition-colors ${inCurrent?"bg-teal-50/30":""}`}>
                     {visibleDefs.map(col => {
-                      const isEd  = editCell?.id===rec.id && editCell?.key===col.key;
+                      const isEd  = editCell?.id===rec.id && editCell?.key===col.key && col.key !== "companyName";
                       const open  = () => setEditCell({ id:rec.id, key:col.key });
                       const save  = (v) => saveCell(rec.id, col.key, v);
                       const cancel= () => setEditCell(null);
@@ -2178,29 +2178,27 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/></td>;
                       }
 
-                      // VIEW モード
+                      // VIEW モード（企業名はコピーのみ・編集不可）
                       if (col.key==="companyName") return (
                         <td key={col.key} className="px-3 py-2 max-w-44">
-                          <span className="group flex items-center gap-1">
-                            <span onClick={open}
-                              className="font-medium text-slate-800 text-xs truncate max-w-36 cursor-pointer hover:text-blue-600 transition-colors">
-                              {val||"—"}
-                            </span>
-                            <button onClick={e => {
-                              e.stopPropagation();
+                          <button
+                            onClick={() => {
                               navigator.clipboard.writeText(val||"").then(() => {
                                 setCopiedId(rec.id);
                                 setTimeout(() => setCopiedId(null), 1500);
                               });
-                            }} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {copiedId === rec.id
-                                ? <span className="text-green-500 text-xs">✓</span>
-                                : <svg className="w-3 h-3 text-slate-300 hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                                  </svg>}
-                            </button>
-                          </span>
+                            }}
+                            title="クリックでコピー"
+                            className={`group flex items-center gap-1 text-left w-full transition-colors ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
+                            <span className="font-medium text-xs truncate max-w-40">{val||"—"}</span>
+                            {copiedId === rec.id
+                              ? <span className="text-green-500 text-xs shrink-0">✓</span>
+                              : <svg className="w-3 h-3 shrink-0 text-slate-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                </svg>}
+                          </button>
                         </td>
                       );
                       if (col.key==="status") return <td key={col.key} className="px-3 py-2">
