@@ -1051,7 +1051,6 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
     const cPhone    = col(["電話番号","TEL","電話"]);
     const cCallType = col(["通話種別","架電種別","種別"]);
     const cTags     = col(["タグ","ラベル"]);
-    const cDate     = col(["架電日時","通話日時","日時","日付","架電日"]);
     const cMemo     = col(["メモ","備考","コメント"]);
     const parsed = []; let filtered = 0, skipped = 0;
 
@@ -1068,8 +1067,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       const callType = cCallType >= 0 ? (row[cCallType]||"").trim() : "";
       const tags     = cTags     >= 0 ? (row[cTags]    ||"").trim() : "";
       const status   = convertMitelStatus(callType, tags); // null可（情報不足時は更新しない）
-      const rawDate  = cDate >= 0 ? (row[cDate]||"").trim() : "";
-      const dateStr  = rawDate ? normDate(rawDate) : `${callMonth}-01`; // 日時列がなければ選択した架電月の初日
+      const dateStr  = `${callMonth}-01`; // 選択した架電月を架電日に設定（CSVの日付より優先）
       const baseMemo = cMemo >= 0 ? (row[cMemo]||"").trim() : "";
       const memo     = tags ? `【MiiTelタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
       parsed.push({ company, operator, status, lastCallDate: dateStr, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
@@ -1127,7 +1125,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
             <span className="text-xs font-semibold text-blue-700 shrink-0">📅 架電月</span>
             <input type="month" value={callMonth} onChange={e => setCallMonth(e.target.value)}
               className="border border-blue-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-            <span className="text-xs text-blue-600">この月の架電記録として「架電日」に <strong>{callMonth}</strong> を設定します</span>
+            <span className="text-xs text-blue-600">取り込むログを「<strong>{callMonth.replace("-","/")}</strong> の架電」として架電日に設定します</span>
           </div>
         )}
 
