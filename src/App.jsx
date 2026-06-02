@@ -232,6 +232,28 @@ function convertMitelStatus(callType, tags) {
 }
 
 function normName(s)    { return String(s||"").replace(/[\s　]/g,"").toLowerCase(); }
+
+// ── CSV バックアップ生成 ────────────────────────────────────────────────────────
+function generateBackupCSV(records) {
+  const headers = ALL_COLUMNS.map(c => c.label);
+  const rows = records.map(r => ALL_COLUMNS.map(c => {
+    const v = r[c.key] ?? "";
+    if (c.key === "lastCallDate" || c.key === "nextCallDate") return fmtDate(normDate(String(v)));
+    return String(v);
+  }));
+  const bom = "﻿";
+  return bom + [headers, ...rows].map(row =>
+    row.map(c => (c.includes(",") || c.includes('"') || c.includes("\n"))
+      ? `"${c.replace(/"/g,'""')}"` : c).join(",")
+  ).join("\r\n");
+}
+function triggerCSVDownload(csv, filename) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
 function genId()        { return Date.now().toString(36)+Math.random().toString(36).slice(2); }
 function getToday()     { return new Date().toISOString().slice(0,10); }
 function nowIso()       { return new Date().toISOString(); }
@@ -585,10 +607,11 @@ function LoginScreen({ onLogin, logo }) {
 
 // ── SettingsModal ──────────────────────────────────────────────────────────────
 function SettingsModal({ settings, onSave, onClose }) {
-  const [logo,       setLogo]       = useState(settings.logo    || null);
-  const [favicon,    setFavicon]    = useState(settings.favicon || null);
-  const [cropSrc,    setCropSrc]    = useState(null);
-  const [cropTarget, setCropTarget] = useState(null); // "logo" | "favicon"
+  const [logo,         setLogo]         = useState(settings.logo    || null);
+  const [favicon,      setFavicon]      = useState(settings.favicon || null);
+  const [backupTimes,  setBackupTimes]  = useState((settings.backupTimes ?? ["10:00","14:00","18:00"]).join(", "));
+  const [cropSrc,      setCropSrc]      = useState(null);
+  const [cropTarget,   setCropTarget]   = useState(null); // "logo" | "favicon"
   const logoRef    = useRef();
   const faviconRef = useRef();
 
@@ -673,12 +696,31 @@ function SettingsModal({ settings, onSave, onClose }) {
             </p>
           </div>
 
+          {/* バックアップ時刻設定 */}
+          <div className="mb-6">
+            <p className="text-sm font-semibold text-slate-700 mb-1">自動バックアップ時刻</p>
+            <input
+              type="text"
+              value={backupTimes}
+              onChange={e => setBackupTimes(e.target.value)}
+              placeholder="10:00, 14:00, 18:00"
+              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              カンマ区切りで時刻を入力（例: 10:00, 14:00, 18:00）。アプリを開いているときに通知が表示されます。
+            </p>
+          </div>
+
           <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
             <button onClick={onClose}
               className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
               キャンセル
             </button>
-            <button onClick={() => { onSave({ logo, favicon }); onClose(); }}
+            <button onClick={() => {
+              const times = backupTimes.split(",").map(t => t.trim()).filter(t => /^\d{2}:\d{2}$/.test(t));
+              onSave({ logo, favicon, backupTimes: times });
+              onClose();
+            }}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
               保存する
             </button>
@@ -804,11 +846,21 @@ function ImportModal({ onImport, onClose }) {
     const headerIdx = isAggregateRow(rows[0]) ? 1 : 0;
     const headers   = rows[headerIdx];
     const map       = mapSalesHeaders(headers);
+
+    // 企業名列が見つからない場合は早期エラー
+    if (map.companyName === undefined) {
+      const detected = headers.filter(h => h.trim()).slice(0, 8).join("、");
+      return {
+        error: `「企業名」列が見つかりませんでした。\n検出されたヘッダー: ${detected}\n\nヒント: 列名を「企業名」「会社名」「法人名」のいずれかにしてください。`,
+        records: [],
+      };
+    }
+
     const records   = [];
     let skipped = 0;
     for (const row of rows.slice(headerIdx + 1)) {
       if (row.every(c => !c.trim())) continue;
-      const company = map.companyName !== undefined ? row[map.companyName] : "";
+      const company = row[map.companyName] ?? "";
       if (!company.trim()) { skipped++; continue; }
       const g = (k) => map[k] !== undefined ? (row[map[k]] || "").trim() : "";
       records.push({
@@ -1655,7 +1707,7 @@ export default function App() {
 
   const [loggedIn,       setLoggedIn]       = useState(() => sessionStorage.getItem("teppou_auth")==="1");
   const [records,        setRecords]        = useState([]);
-  const [settings,       setSettings]       = useState({ logo:null, favicon:null });
+  const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [search,         setSearch]         = useState("");
   const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -1791,6 +1843,35 @@ export default function App() {
     link.setAttribute("sizes", "512x512");
     link.href = settings.favicon;
   }, [settings.favicon]);
+
+  // ── 自動バックアップ ───────────────────────────────────────────────────────────
+  const [backupNotify,    setBackupNotify]    = useState(null); // "HH:MM" or null
+  const lastBackupDoneRef = useRef({});  // { "YYYY-MM-DD_HH:MM": true }
+
+  useEffect(() => {
+    const times = settings.backupTimes ?? [];
+    if (!times.length) return;
+    const check = () => {
+      const now  = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+      const key  = `${getToday()}_${hhmm}`;
+      if (times.includes(hhmm) && !lastBackupDoneRef.current[key]) {
+        lastBackupDoneRef.current[key] = true;
+        setBackupNotify(hhmm);
+      }
+    };
+    const id = setInterval(check, 60_000);
+    check();
+    return () => clearInterval(id);
+  }, [settings.backupTimes]);
+
+  const doBackupDownload = (label = "") => {
+    const ts  = getToday().replace(/-/g,"");
+    const hm  = label.replace(":","") || new Date().toTimeString().slice(0,5).replace(":","");
+    const csv = generateBackupCSV(records);
+    triggerCSVDownload(csv, `TEPPOU_backup_${ts}_${hm}.csv`);
+    setBackupNotify(null);
+  };
 
   // ── Close column dropdown on outside click ────────────────────────────────────
   useEffect(() => {
@@ -1970,6 +2051,22 @@ export default function App() {
         {/* ── List view ── */}
         {view==="list" && <>
 
+        {/* ── バックアップ通知バナー ── */}
+        {backupNotify && (
+          <div className="bg-blue-50 border border-blue-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-semibold text-blue-700 shrink-0">💾 {backupNotify} バックアップ</span>
+            <span className="text-xs text-blue-600 flex-1">データのバックアップ時刻になりました（{records.length.toLocaleString()}件）</span>
+            <button onClick={() => doBackupDownload(backupNotify)}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg transition-colors shrink-0">
+              CSVダウンロード
+            </button>
+            <button onClick={() => setBackupNotify(null)}
+              className="px-3 py-1.5 text-xs text-blue-500 hover:text-blue-700 shrink-0">
+              後で
+            </button>
+          </div>
+        )}
+
         {/* ── Storage warning ── */}
         {storageWarning && (
           <div className="bg-orange-50 border border-orange-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
@@ -2060,6 +2157,17 @@ export default function App() {
                   d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
               重複クレンジング
+            </button>
+
+            {/* 手動バックアップ */}
+            <button onClick={() => doBackupDownload()}
+              disabled={records.length === 0}
+              className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-40">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              バックアップ
             </button>
 
             {/* Column settings dropdown */}
