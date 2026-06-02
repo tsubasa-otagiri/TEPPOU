@@ -2813,7 +2813,7 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
-  const [view,           setView]           = useState(savedUI.view || "list");   // "list" | "analysis"
+  const [view,           setView]           = useState(["list","analysis","pastmgmt"].includes(savedUI.view) ? savedUI.view : "list");
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
@@ -3282,7 +3282,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 レポート"],["pull","🔍 プル照合"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -3293,9 +3293,6 @@ export default function App() {
 
         {/* ── Analysis view ── */}
         {view==="analysis" && <ReportView records={records} />}
-
-        {/* ── Pull view ── */}
-        {view==="pull" && <PullView records={records} />}
 
         {/* ── 過去商談管理 ── */}
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
