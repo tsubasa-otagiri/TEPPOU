@@ -1835,7 +1835,7 @@ const DEFAULT_PAST_VISIBLE = [
 ];
 
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
-function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
+function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const [search,       setSearch]       = useState("");
   const [stFilter,     setStFilter]     = useState("all");
   const [editCell,     setEditCell]     = useState(null);
@@ -1845,6 +1845,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
   const [showColDrop,  setShowColDrop]  = useState(false);
   const [sortKey,      setSortKey]      = useState(null);
   const [sortDir,      setSortDir]      = useState("asc");
+  const [showDupe,     setShowDupe]     = useState(false);
   const colDropRef = useRef();
   const fileRef    = useRef();
   const today = getToday();
@@ -2043,10 +2044,19 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
             )}
           </div>
           {pastMgmt.length > 0 && (
-            <button onClick={() => { if(window.confirm(`過去商談リスト全${pastMgmt.length}件を削除しますか？`)) setPastMgmt([]); }}
-              className="text-xs text-rose-500 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors">
-              リストをクリア
-            </button>
+            <>
+              <button onClick={() => setShowDupe(true)}
+                className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                重複クレンジング
+              </button>
+              <button onClick={() => { if(window.confirm(`過去商談リスト全${pastMgmt.length}件を削除しますか？`)) setPastMgmt([]); }}
+                className="text-xs text-rose-500 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors">
+                リストをクリア
+              </button>
+            </>
           )}
           <span className="text-xs text-slate-400 ml-auto">{pastMgmt.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
         </div>
@@ -2186,7 +2196,10 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
                     })}
                     <td className="px-3 py-2 whitespace-nowrap">
                       {inCurrent
-                        ? <span className="text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded text-xs font-semibold">✓ あり</span>
+                        ? <button onClick={() => onGoToList?.(rec.companyName)}
+                            className="text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer">
+                            ✓ リストを表示
+                          </button>
                         : <span className="text-slate-300 text-xs">—</span>}
                     </td>
                   </tr>
@@ -2208,6 +2221,15 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
           </div>
         )}
       </div>
+
+      {/* 重複クレンジング */}
+      {showDupe && (
+        <DuplicateModal
+          records={pastMgmt}
+          onClean={ids => { const del = new Set(ids); setPastMgmt(p => p.filter(r => !del.has(r.id))); }}
+          onClose={() => setShowDupe(false)}
+        />
+      )}
     </div>
   );
 }
@@ -2657,7 +2679,8 @@ export default function App() {
         {view==="pull" && <PullView records={records} />}
 
         {/* ── 過去商談管理 ── */}
-        {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records} />}
+        {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
+          onGoToList={name => { setView("list"); setSearch(name); setPage(1); }} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
