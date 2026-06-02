@@ -1890,6 +1890,16 @@ export default function App() {
   const [sortKey,        setSortKey]        = useState(null);
   const [sortDir,        setSortDir]        = useState("asc");
   const ALL_STATUS_KEYS = Object.keys(STATUS_CFG);
+
+  // STATUS_CFG に追加されたキー（未架電など）が filterSet に入っていない場合に自動補完
+  useEffect(() => {
+    setStatusFilterSet(prev => {
+      const missing = ALL_STATUS_KEYS.filter(k => !prev.has(k));
+      if (missing.length === 0) return prev;
+      return new Set([...prev, ...missing]);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const toggleStatus = key => setStatusFilterSet(prev => {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
   });
