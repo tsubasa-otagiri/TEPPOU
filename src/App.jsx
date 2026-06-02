@@ -1823,22 +1823,17 @@ function PullView({ records }) {
 
 // ── 過去商談専用追加列（ALL_COLUMNSに含まれない） ──────────────────────────────
 const PAST_EXTRA_COLS = [
-  { key:"targetDate",       label:"完了予定日",         required:false },
-  { key:"probability",      label:"確度(%)",            required:false },
-  { key:"reapproachStatus", label:"再アプローチ",       required:false },
-  { key:"reapproachDate",   label:"再アプローチ予定日", required:false },
+  { key:"targetDate", label:"完了予定日", required:false },
 ];
 const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
 const DEFAULT_PAST_VISIBLE = [
   "companyName","lastCallDate","nextCallDate","status","storeCount","phone",
-  "assignee","leadSource","memo",
-  "targetDate","probability","reapproachStatus","reapproachDate",
+  "assignee","leadSource","memo","targetDate",
 ];
 
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
 function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const [search,       setSearch]       = useState("");
-  const [stFilter,     setStFilter]     = useState("all");
   const [editCell,     setEditCell]     = useState(null);
   const [log,          setLog]          = useState(null);
   const [loading,      setLoading]      = useState(false);
@@ -1866,7 +1861,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   // フィルタ・ソート
   const filtered = useMemo(() => {
     let rs = pastMgmt.filter(r => {
-      if (stFilter !== "all" && (r.reapproachStatus||"未アプローチ") !== stFilter) return false;
+
       if (search) {
         const q = search.toLowerCase();
         return ALL_PAST_COLS.some(c => String(r[c.key]||"").toLowerCase().includes(q));
@@ -1881,7 +1876,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
       });
     }
     return rs;
-  }, [pastMgmt, search, stFilter, sortKey, sortDir]);
+  }, [pastMgmt, search, sortKey, sortDir]);
 
   const [page, setPage] = useState(1);
   const PAGE = 100;
@@ -1958,9 +1953,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
               leadAddedDate: getToday(),
               // 過去商談専用
               targetDate:       td,
-              probability:      map.probability !== undefined ? String(row[map.probability]??"") : "",
-              reapproachStatus: "未アプローチ",
-              reapproachDate:   "",
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
@@ -1995,25 +1987,15 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
 
   const saveCell = (id, key, val) => {
     setEditCell(null);
-    const normalized = (key === "lastCallDate" || key === "nextCallDate" || key === "targetDate" || key === "reapproachDate")
+    const normalized = (key === "lastCallDate" || key === "nextCallDate" || key === "targetDate")
       ? normDate(val) : val;
     setPastMgmt(prev => prev.map(r => {
       if (r.id !== id) return r;
       const updated = { ...r, [key]: normalized, updatedAt: nowIso() };
-      // 状況が入力されたら「未アプローチ」を「アプローチ中」に自動変更
-      if (key === "status" && normalized && normalized !== "未架電" &&
-          (updated.reapproachStatus === "未アプローチ" || !updated.reapproachStatus)) {
-        updated.reapproachStatus = "アプローチ中";
-      }
       return updated;
     }));
   };
 
-  const stCounts = useMemo(() => {
-    const m = {};
-    pastMgmt.forEach(r => { const s = r.reapproachStatus||"未アプローチ"; m[s]=(m[s]||0)+1; });
-    return m;
-  }, [pastMgmt]);
 
   const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
 
@@ -2072,25 +2054,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
           )}
           <span className="text-xs text-slate-400 ml-auto">{pastMgmt.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
         </div>
-        {/* 再アプローチフィルター */}
-        {Object.keys(stCounts).length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            <button onClick={() => { setStFilter("all"); setPage(1); }}
-              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter==="all" ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-              全表示
-            </button>
-            {Object.entries(stCounts).map(([s,c]) => {
-              const cfg = REAPPROACH_STATUS[s]??{};
-              return (
-                <button key={s} onClick={() => { setStFilter(stFilter===s?"all":s); setPage(1); }}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter===s ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-blue-400 ring-offset-1` : `${cfg.bg||"bg-slate-100"} ${cfg.text||"text-slate-600"} border-slate-200`}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot||"bg-slate-400"}`}/>
-                  {s} {c}
-                </button>
-              );
-            })}
-          </div>
-        )}
         {/* 検索 */}
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2150,18 +2113,13 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
                             {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
-                        if (col.key === "reapproachStatus") return <td key={col.key} className="px-3 py-2 whitespace-nowrap w-36 align-middle">
-                          <select autoFocus defaultValue={val||"未アプローチ"} className={`${inputCls} w-32`}
-                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
-                            {Object.keys(REAPPROACH_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
-                          </select></td>;
                         if (col.key === "leadSource") return <td key={col.key} className="px-3 py-2">
                           <select autoFocus defaultValue={val||""} className={`${inputCls} w-32`}
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
                             <option value="">—</option>
                             {Object.keys(LEAD_SOURCE_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
-                        if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="reapproachDate"||col.key==="leadAddedDate") {
+                        if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="leadAddedDate") {
                           const dateDefault = col.key === "lastCallDate"
                             ? (normDate(val) || today)   // 架電日は未設定なら本日
                             : (normDate(val) || "");
@@ -2206,19 +2164,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                       );
                       if (col.key==="status") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span></td>;
-                      if (col.key==="reapproachStatus") {
-                        const cfg = REAPPROACH_STATUS[val||"未アプローチ"]??{};
-                        return <td key={col.key} className="px-3 py-2 whitespace-nowrap w-36 align-middle">
-                          <span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${cfg.bg} ${cfg.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>{val||"未アプローチ"}
-                          </span></td>;
-                      }
                       if (col.key==="leadSource") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer hover:opacity-80"><LeadSourceBadge source={val}/></span></td>;
-                      if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="reapproachDate"||col.key==="leadAddedDate") {
-                        const nd = normDate(val);
+                      if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="leadAddedDate") {
+                        const nd = normDate(val) || (col.key==="leadAddedDate" ? today : "");
                         return <td key={col.key} className="px-3 py-2 whitespace-nowrap">
-                          <span onClick={open} className={`cursor-pointer text-xs hover:bg-slate-100 rounded px-1 transition-colors ${nd&&nd<today&&(col.key==="reapproachDate"||col.key==="nextCallDate")?"text-red-600 font-bold":"text-slate-600"}`}>
+                          <span onClick={open} className={`cursor-pointer text-xs hover:bg-slate-100 rounded px-1 transition-colors ${nd&&nd<today&&col.key==="nextCallDate"?"text-red-600 font-bold":"text-slate-600"}`}>
                             {nd ? fmtDate(nd) : <span className="text-slate-300">— 設定</span>}
                           </span></td>;
                       }
