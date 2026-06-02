@@ -110,36 +110,28 @@ async function idbPutAll(records, storeName = IDB_STORE) {
     tx.onerror    = e => rej(e.target.error);
   });
 }
-// 過去商談専用 DB（メイン DB とは別管理）
-function idbPastOpen() {
-  return new Promise((res, rej) => {
-    const req = indexedDB.open(IDB_PAST_NAME, IDB_PAST_VER);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("past_mgmt"))
-        db.createObjectStore("past_mgmt", { keyPath: "id" });
-    };
-    req.onsuccess = e => res(e.target.result);
-    req.onerror   = e => rej(e.target.error);
-  });
-}
+// 過去商談は teppou_idb v2 の past_mgmt ストアを使用（データが既存）
 async function idbPastGetAll() {
-  const db = await idbPastOpen();
+  const db = await idbOpen();   // teppou_idb v2 を開く
   return new Promise((res, rej) => {
-    const req = db.transaction("past_mgmt", "readonly").objectStore("past_mgmt").getAll();
-    req.onsuccess = () => res(req.result || []);
-    req.onerror   = e => rej(e.target.error);
+    try {
+      const req = db.transaction("past_mgmt", "readonly").objectStore("past_mgmt").getAll();
+      req.onsuccess = () => res(req.result || []);
+      req.onerror   = e => rej(e.target.error);
+    } catch(e) { res([]); }
   });
 }
 async function idbPastPutAll(records) {
-  const db = await idbPastOpen();
+  const db = await idbOpen();   // teppou_idb v2 を開く
   return new Promise((res, rej) => {
-    const tx    = db.transaction("past_mgmt", "readwrite");
-    const store = tx.objectStore("past_mgmt");
-    store.clear();
-    records.forEach(r => store.put(r));
-    tx.oncomplete = res;
-    tx.onerror    = e => rej(e.target.error);
+    try {
+      const tx    = db.transaction("past_mgmt", "readwrite");
+      const store = tx.objectStore("past_mgmt");
+      store.clear();
+      records.forEach(r => store.put(r));
+      tx.oncomplete = res;
+      tx.onerror    = e => rej(e.target.error);
+    } catch(e) { rej(e); }
   });
 }
 
