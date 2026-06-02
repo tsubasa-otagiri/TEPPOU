@@ -1846,6 +1846,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const [sortKey,      setSortKey]      = useState(null);
   const [sortDir,      setSortDir]      = useState("asc");
   const [showDupe,     setShowDupe]     = useState(false);
+  const [listModal,    setListModal]    = useState(null); // { name, matched[] }
   const colDropRef = useRef();
   const fileRef    = useRef();
   const today = getToday();
@@ -2196,7 +2197,14 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                     })}
                     <td className="px-3 py-2 whitespace-nowrap">
                       {inCurrent
-                        ? <button onClick={() => onGoToList?.(rec.companyName)}
+                        ? <button onClick={() => {
+                            const n = normName(rec.companyName);
+                            const matched = records.filter(r => {
+                              const rn = normName(r.companyName);
+                              return rn === n || rn.includes(n) || n.includes(rn);
+                            });
+                            setListModal({ name: rec.companyName, matched });
+                          }}
                             className="text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer">
                             ✓ リストを表示
                           </button>
@@ -2221,6 +2229,58 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
           </div>
         )}
       </div>
+
+      {/* 現在リスト表示モーダル */}
+      {listModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">📋 現在のリスト — 一致レコード</h2>
+                <p className="text-xs text-slate-400 mt-0.5">{listModal.name}</p>
+              </div>
+              <button onClick={() => setListModal(null)} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              {listModal.matched.length === 0 ? (
+                <p className="text-slate-400 text-sm text-center py-8">一致するレコードが見つかりませんでした。</p>
+              ) : (
+                <div className="space-y-3">
+                  {listModal.matched.map(r => {
+                    const sc = STATUS_CFG[r.status] ?? {};
+                    return (
+                      <div key={r.id} className={`rounded-xl border p-4 ${sc.row || "bg-white"} ${sc.border || "border-slate-200"}`}>
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <span className="font-semibold text-slate-800 text-sm">{r.companyName}</span>
+                          <StatusBadge status={r.status}/>
+                          {r.leadSource && <LeadSourceBadge source={r.leadSource}/>}
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-slate-600">
+                          {r.phone       && <span>📞 {r.phone}</span>}
+                          {r.assignee    && <span>👤 {r.assignee}</span>}
+                          {r.lastCallDate && <span>📅 架電日: {fmtDate(normDate(r.lastCallDate))}</span>}
+                          {r.nextCallDate && <span>🔔 次回: {fmtDate(normDate(r.nextCallDate))}</span>}
+                          {r.storeCount   && <span>🏪 {r.storeCount}店舗</span>}
+                          {r.industry     && <span>🏭 {r.industry}</span>}
+                        </div>
+                        {r.memo && (
+                          <p className="mt-2 text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 whitespace-pre-wrap">{r.memo}</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end shrink-0">
+              <button onClick={() => setListModal(null)}
+                className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 重複クレンジング */}
       {showDupe && (
