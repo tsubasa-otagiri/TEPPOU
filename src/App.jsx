@@ -695,9 +695,9 @@ function SettingsModal({ settings, onSave, onClose }) {
             <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
           </div>
 
-          {/* Logo */}
+          {/* ロゴ / ファビコン（共通） */}
           <div className="mb-6">
-            <p className="text-sm font-semibold text-slate-700 mb-3">アプリロゴ</p>
+            <p className="text-sm font-semibold text-slate-700 mb-3">アプリロゴ / ファビコン</p>
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 border-2 border-dashed border-slate-300 rounded-xl flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
                 {logo
@@ -709,37 +709,13 @@ function SettingsModal({ settings, onSave, onClose }) {
                 {logo && (
                   <button onClick={() => { setLogo(null); setFavicon(null); }}
                     className="text-xs text-rose-500 hover:text-rose-700 text-left">
-                    ロゴを削除
+                    削除
                   </button>
                 )}
               </div>
             </div>
             <p className="text-xs text-slate-400 mt-2">
-              PNG / JPEG 対応。アップロード後にトリミングできます。ログイン画面・ヘッダーに反映されます。
-            </p>
-          </div>
-
-          {/* Favicon */}
-          <div className="mb-6">
-            <p className="text-sm font-semibold text-slate-700 mb-3">ファビコン（ブラウザタブアイコン）</p>
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center overflow-hidden bg-slate-50 shrink-0">
-                {favicon
-                  ? <img src={favicon} alt="favicon" className="w-8 h-8 object-contain" />
-                  : <span className="text-xs text-slate-400">—</span>}
-              </div>
-              <div className="flex flex-col gap-2">
-                <UploadBtn inputRef={faviconRef} target="favicon" />
-                {favicon && (
-                  <button onClick={() => { setLogo(null); setFavicon(null); }}
-                    className="text-xs text-rose-500 hover:text-rose-700 text-left">
-                    ファビコンを削除
-                  </button>
-                )}
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 mt-2">
-              ICO / PNG 推奨。保存するとブラウザタブのアイコンに即時反映されます。
+              PNG / JPEG 対応。アップロード後にトリミングできます。ロゴ・ファビコン（タブアイコン）に同時反映されます。
             </p>
           </div>
 
