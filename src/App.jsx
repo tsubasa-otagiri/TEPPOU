@@ -154,6 +154,7 @@ const ALL_COLUMNS = [
   { key:"status",        label:"状況",                                required:false },
   { key:"industry",      label:"業種",                                required:false },
   { key:"leadSource",    label:"ソース",                              required:false },
+  { key:"leadAddedDate", label:"リード追加日",                        required:false },
   { key:"hpSite",        label:"HPサイト",                            required:false },
   { key:"gbp",           label:"GBP",                                 required:false },
   { key:"phone",         label:"電話番号",                            required:false },
@@ -960,7 +961,7 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
         os:            g("os"),
         nextCallDate:  normDate(g("nextCallDate")),
         lastCallDate:  normDate(g("lastCallDate")),
-        importedAt: nowIso(), updatedAt: nowIso(), source:"csv",
+        importedAt: nowIso(), updatedAt: nowIso(), source:"csv", leadAddedDate: getToday(),
       });
     }
     return { success:true, records, skipped, autoSkip: headerIdx === 1 };
@@ -1005,7 +1006,7 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
       records.push({
         id:genId(), companyName:company, phone: cPhone>=0?(row[cPhone]||"").trim():"",
         email:"", url:"", status, assignee, lastCallDate:dateStr, nextCallDate:"",
-        callCount:1, memo, importedAt:nowIso(), updatedAt:nowIso(), source:"metel",
+        callCount:1, memo, importedAt:nowIso(), updatedAt:nowIso(), source:"metel", leadAddedDate: getToday(),
       });
     }
     return { success:true, records, filtered, skipped };
@@ -1363,6 +1364,12 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
               )}
             </div>
             {txt("storeCount", "店舗数")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">リード追加日</label>
+              <input type="date" value={normDate(form.leadAddedDate) || getToday()}
+                onChange={e => upd("leadAddedDate", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
 
             {/* 架電管理 */}
             <SectionLabel>架電管理</SectionLabel>
@@ -2105,7 +2112,7 @@ export default function App() {
     if (isEdit) {
       setRecords(p => { const next = p.map(r => r.id===form.id ? { ...r, ...form, updatedAt:nowIso() } : r); syncToAPI(next); return next; });
     } else {
-      setRecords(p => { const next = [...p, { ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual" }]; syncToAPI(next); return next; });
+      setRecords(p => { const next = [...p, { ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual", leadAddedDate: form.leadAddedDate || getToday() }]; syncToAPI(next); return next; });
     }
   }, [records, syncToAPI]);
 
@@ -2514,8 +2521,8 @@ export default function App() {
                               {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           );
-                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
-                          // 架電日はデフォルトを「本日」、次回架電日は既存値
+                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate" || col.key === "leadAddedDate") {
+                          // 架電日はデフォルトを「本日」、次回架電日・リード追加日は既存値
                           const dateDefault = col.key === "lastCallDate"
                             ? (normDate(rec[col.key]) || today)
                             : (normDate(rec[col.key]) || "");
@@ -2590,8 +2597,8 @@ export default function App() {
                               </button>
                             </span>
                           );
-                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
-                          const nd = normDate(val);
+                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate" || col.key === "leadAddedDate") {
+                          const nd = normDate(val) || (col.key === "leadAddedDate" ? today : "");
                           if (!nd) {
                             viewEl = <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500 hover:bg-slate-50 rounded px-1 transition-colors">— 設定</span>;
                           } else if (col.key === "nextCallDate") {
