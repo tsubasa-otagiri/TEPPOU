@@ -882,6 +882,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
   const [log,       setLog]       = useState(null);
   const [loading,   setLoading]   = useState(false);
   const [progress,  setProgress]  = useState("");
+  const [callMonth, setCallMonth] = useState(() => new Date().toISOString().slice(0,7)); // "YYYY-MM"
   const fileRef = useRef();
 
   const processRows = (rows) => {
@@ -1065,7 +1066,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       const tags     = cTags     >= 0 ? (row[cTags]    ||"").trim() : "";
       const status   = convertMitelStatus(callType, tags); // null可（情報不足時は更新しない）
       const rawDate  = cDate >= 0 ? (row[cDate]||"").trim() : "";
-      const dateStr  = rawDate ? normDate(rawDate) : "2026-05-01"; // 日時なければ5月の架電記録として設定
+      const dateStr  = rawDate ? normDate(rawDate) : `${callMonth}-01`; // 日時列がなければ選択した架電月の初日
       const baseMemo = cMemo >= 0 ? (row[cMemo]||"").trim() : "";
       const memo     = tags ? `【MiiTelタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
       parsed.push({ company, operator, status, lastCallDate: dateStr, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
@@ -1116,6 +1117,16 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
             </label>
           ))}
         </div>
+
+        {/* MiiTel: 架電月の選択 */}
+        {mode === "metel" && (
+          <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-4">
+            <span className="text-xs font-semibold text-blue-700 shrink-0">📅 架電月</span>
+            <input type="month" value={callMonth} onChange={e => setCallMonth(e.target.value)}
+              className="border border-blue-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <span className="text-xs text-blue-600">この月の架電記録として「架電日」に <strong>{callMonth}</strong> を設定します</span>
+          </div>
+        )}
 
         {/* Template download */}
         <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 mb-4">
@@ -1200,7 +1211,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
             {log.error ? log.error : (
               <span>
                 {log.metel
-                  ? <>✅ MiiTel取込完了: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
+                  ? <>✅ MiiTel取込完了（架電月: {callMonth}）: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
                   : log.deals
                   ? <>✅ 過去商談インポート完了: <strong>{log.deals.length}件</strong>（同一企業名は上書き更新）</>
                   : <>✅ インポート完了: <strong>{log.records.length}件</strong>追加</>}
@@ -3080,7 +3091,7 @@ export default function App() {
             assignee: "",
             createdBy: p.operator,      // 追加者
             otherContact: "",
-            lastCallDate: p.lastCallDate || "2026-05-01",
+            lastCallDate: p.lastCallDate || getToday(),
             memo: p.memo || "",
             leadAddedDate: getToday(),
             source: "metel",
