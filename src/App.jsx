@@ -2125,7 +2125,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">現在リスト</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap min-w-[72px]">現在リスト</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -2228,7 +2228,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                         <span onClick={open} className="text-slate-700 text-xs cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
                           {val||<span className="text-slate-300">—</span>}</span></td>;
                     })}
-                    <td className="px-3 py-2 whitespace-nowrap">
+                    <td className="px-3 py-2 whitespace-nowrap min-w-[72px]">
                       {inCurrent
                         ? <button onClick={() => {
                             const n = normName(rec.companyName);
