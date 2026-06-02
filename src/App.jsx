@@ -200,6 +200,21 @@ const LEAD_SOURCE_CFG = {
   "プル":           { bg:"bg-rose-100",    text:"text-rose-700",    dot:"bg-rose-400"    },
 };
 
+// ── 不在理由設定 ───────────────────────────────────────────────────────────────
+const ABSENCE_REASON_CFG = {
+  "席外":    { bg:"bg-slate-100",  text:"text-slate-600",  dot:"bg-slate-400"  },
+  "午前":    { bg:"bg-sky-100",    text:"text-sky-700",    dot:"bg-sky-400"    },
+  "お昼":    { bg:"bg-amber-100",  text:"text-amber-700",  dot:"bg-amber-400"  },
+  "午後":    { bg:"bg-orange-100", text:"text-orange-700", dot:"bg-orange-400" },
+  "夕方":    { bg:"bg-orange-200", text:"text-orange-800", dot:"bg-orange-500" },
+  "出張":    { bg:"bg-red-700",    text:"text-white",      dot:"bg-red-900"    },
+  "折返":    { bg:"bg-indigo-100", text:"text-indigo-700", dot:"bg-indigo-400" },
+  "留守":    { bg:"bg-purple-100", text:"text-purple-700", dot:"bg-purple-400" },
+  "休み":    { bg:"bg-teal-100",   text:"text-teal-700",   dot:"bg-teal-400"   },
+  "不通":    { bg:"bg-gray-100",   text:"text-gray-600",   dot:"bg-gray-400"   },
+  "着拒？":  { bg:"bg-rose-200",   text:"text-rose-800",   dot:"bg-rose-500"   },
+};
+
 const ALL_COLUMNS = [
   { key:"companyName",   label:"企業名",                              required:true  },
   { key:"lastCallDate",  label:"架電日",                              required:false },
@@ -232,7 +247,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","absenceReason","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -383,6 +398,17 @@ function LeadSourceBadge({ source }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-black/10 ${c.bg} ${c.text}`}>
       {source}
+    </span>
+  );
+}
+
+// ── AbsenceReasonBadge ─────────────────────────────────────────────────────────
+function AbsenceReasonBadge({ reason }) {
+  if (!reason) return null;
+  const c = ABSENCE_REASON_CFG[reason] ?? { bg:"bg-slate-100", text:"text-slate-600" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-black/10 ${c.bg} ${c.text}`}>
+      {reason}
     </span>
   );
 }
@@ -1577,7 +1603,15 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
               </select>
             </div>
             {txt("assignee",      "担当者")}
-            {txt("absenceReason", "不在理由")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">不在理由</label>
+              <select value={form.absenceReason||""} onChange={e => upd("absenceReason", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— 未選択 —</option>
+                {Object.keys(ABSENCE_REASON_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {form.absenceReason && <div className="mt-1.5"><AbsenceReasonBadge reason={form.absenceReason} /></div>}
+            </div>
             {txt("refusalReason", "断り理由")}
 
             {/* Web / GBP */}
@@ -2504,6 +2538,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             <option value="">—</option>
                             {Object.keys(LEAD_SOURCE_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
+                        if (col.key === "absenceReason") return <td key={col.key} className="px-3 py-2">
+                          <select autoFocus defaultValue={val||""} className={`${inputCls} w-28`}
+                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                            <option value="">—</option>
+                            {Object.keys(ABSENCE_REASON_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                          </select></td>;
                         if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="leadAddedDate") {
                           const dateDefault = col.key === "lastCallDate"
                             ? (normDate(val) || today)   // 架電日は未設定なら本日
@@ -2551,6 +2591,9 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                         <span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span></td>;
                       if (col.key==="leadSource") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer hover:opacity-80"><LeadSourceBadge source={val}/></span></td>;
+                      if (col.key==="absenceReason") return <td key={col.key} className="px-3 py-2">
+                        {val ? <span onClick={open} className="cursor-pointer hover:opacity-80"><AbsenceReasonBadge reason={val}/></span>
+                             : <span onClick={open} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>}</td>;
                       if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="leadAddedDate") {
                         const nd = normDate(val) || (col.key==="leadAddedDate" ? today : "");
                         return <td key={col.key} className="px-3 py-2 whitespace-nowrap">
@@ -3459,6 +3502,17 @@ export default function App() {
                               {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           );
+                        } else if (col.key === "absenceReason") {
+                          editEl = (
+                            <select autoFocus defaultValue={rec.absenceReason || ""}
+                              className={`${inputCls} w-28`}
+                              onChange={e => save(e.target.value)}
+                              onBlur={cancel}
+                              onKeyDown={e => e.key === "Escape" && cancel()}>
+                              <option value="">— 未選択 —</option>
+                              {Object.keys(ABSENCE_REASON_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          );
                         } else if (col.key === "lastCallDate" || col.key === "nextCallDate" || col.key === "leadAddedDate") {
                           // 架電日はデフォルトを「本日」、次回架電日・リード追加日は既存値
                           const dateDefault = col.key === "lastCallDate"
@@ -3519,6 +3573,10 @@ export default function App() {
                         } else if (col.key === "leadSource") {
                           viewEl = val
                             ? <span onClick={openEdit} className="cursor-pointer hover:opacity-80 transition-opacity"><LeadSourceBadge source={val}/></span>
+                            : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
+                        } else if (col.key === "absenceReason") {
+                          viewEl = val
+                            ? <span onClick={openEdit} className="cursor-pointer hover:opacity-80 transition-opacity"><AbsenceReasonBadge reason={val}/></span>
                             : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
