@@ -2149,7 +2149,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
                             {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
-                        if (col.key === "reapproachStatus") return <td key={col.key} className="px-3 py-2">
+                        if (col.key === "reapproachStatus") return <td key={col.key} className="px-3 py-2 whitespace-nowrap w-36 align-middle">
                           <select autoFocus defaultValue={val||"未アプローチ"} className={`${inputCls} w-32`}
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
                             {Object.keys(REAPPROACH_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
@@ -2206,7 +2206,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                         <span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span></td>;
                       if (col.key==="reapproachStatus") {
                         const cfg = REAPPROACH_STATUS[val||"未アプローチ"]??{};
-                        return <td key={col.key} className="px-3 py-2">
+                        return <td key={col.key} className="px-3 py-2 whitespace-nowrap w-36 align-middle">
                           <span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${cfg.bg} ${cfg.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>{val||"未アプローチ"}
                           </span></td>;
