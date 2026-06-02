@@ -1187,7 +1187,7 @@ function sortGroupForDupe(rs) {
   });
 }
 
-function DuplicateModal({ records, onClean, onClose, sortFn }) {
+function DuplicateModal({ records, onClean, onClose, sortFn, renderExtra }) {
   const sortGroup = sortFn || sortGroupForDupe;
   const [step,      setStep]      = useState("select"); // "select" | "confirm"
   const [deleteSet, setDeleteSet] = useState(() => {
@@ -1286,6 +1286,7 @@ function DuplicateModal({ records, onClean, onClose, sortFn }) {
                       <span className="text-xs text-slate-600 shrink-0">{r.phone||"—"}</span>
                       <StatusBadge status={r.status} />
                       {r.assignee && <span className="text-xs text-slate-500">{r.assignee}</span>}
+                      {renderExtra && renderExtra(r)}
                     </label>
                   ))}
                 </div>
@@ -2321,11 +2322,16 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
           onClean={ids => { const del = new Set(ids); setPastMgmt(p => p.filter(r => !del.has(r.id))); }}
           onClose={() => setShowDupe(false)}
           sortFn={rs => [...rs].sort((a, b) => {
-            // 完了予定日が新しいほうを残す（先頭 = 残す）
             const ad = normDate(a.targetDate) || "";
             const bd = normDate(b.targetDate) || "";
             return bd.localeCompare(ad);
           })}
+          renderExtra={r => (
+            <>
+              {r.leadAddedDate && <span className="text-xs text-slate-400 shrink-0">追加日: {fmtDate(normDate(r.leadAddedDate))}</span>}
+              {r.targetDate    && <span className="text-xs text-blue-500 shrink-0 font-medium">完了予定日: {fmtDate(normDate(r.targetDate))}</span>}
+            </>
+          )}
         />
       )}
     </div>
