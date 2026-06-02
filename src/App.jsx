@@ -227,6 +227,8 @@ const ALL_COLUMNS = [
   { key:"gbp",           label:"GBP",                                 required:false },
   { key:"phone",         label:"電話番号",                            required:false },
   { key:"assignee",      label:"担当者",                              required:false },
+  { key:"createdBy",     label:"追加者",                              required:false },
+  { key:"otherContact",  label:"別担当者",                            required:false },
   { key:"department",    label:"部署",                                required:false },
   { key:"absenceReason", label:"不在理由",                            required:false },
   { key:"gbpManagement", label:"GBPの管理",                           required:false },
@@ -851,10 +853,10 @@ const CSV_TEMPLATES = {
     ],
   },
   metel: {
-    filename: "TEPPOU_ミーてるログ_フォーマット.csv",
+    filename: "TEPPOU_MiiTel架電ログ_フォーマット.csv",
     rows: [
-      ["担当者","企業名","電話番号","通話種別","タグ","架電日時","メモ"],
-      ["櫻井　肇","株式会社サンプル","03-0000-0000","発信（不在）","担当者不在","2026-06-01 10:00:00","サンプルメモ"],
+      ["ユーザー名","取引先会社名","電話番号","通話種別","タグ","架電日時","メモ"],
+      ["櫻井　肇","株式会社サンプル","03-0000-0000","発信（不在）","担当者不在","2026-05-01 10:00:00","サンプルメモ"],
     ],
   },
 };
@@ -873,7 +875,7 @@ function downloadTemplate(mode) {
 }
 
 // ── ImportModal ────────────────────────────────────────────────────────────────
-function ImportModal({ onImport, onImportPastDeals, onClose }) {
+function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
   const [mode,      setMode]      = useState("sales");
   const [inputMode, setInputMode] = useState("file");   // "file" | "paste"
   const [pasteText, setPasteText] = useState("");
@@ -891,8 +893,15 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
           const result = doImportPastDeals(rows);
           setLog(result);
           if (result.deals?.length > 0) onImportPastDeals(result.deals);
+        } else if (mode === "metel") {
+          const result = doImportMetel(rows);
+          if (result.error) { setLog(result); }
+          else {
+            const merge = onImportMetel(result.parsed); // {added, updated}
+            setLog({ success:true, metel:true, ...merge, filtered:result.filtered, skipped:result.skipped });
+          }
         } else {
-          const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
+          const result = doImportSales(rows);
           setLog(result);
           if (result.records?.length > 0) onImport(result.records);
         }
@@ -1024,7 +1033,7 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
   }
 
   function doImportMetel(rows) {
-    if (rows.length < 2) return { error:"データ行が不足しています", records:[] };
+    if (rows.length < 2) return { error:"データ行が不足しています", parsed:[] };
     const headers = rows[0];
     const col = patterns => {
       for (let i = 0; i < headers.length; i++) {
@@ -1033,20 +1042,20 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
       }
       return -1;
     };
-    const cAssignee = col(["担当者","オペレーター","エージェント","架電者"]);
-    const cCompany  = col(["企業名","会社名","顧客名","取引先名"]);
+    const cAssignee = col(["ユーザー名","担当者","オペレーター","エージェント","架電者"]);
+    const cCompany  = col(["取引先会社名","企業名","会社名","顧客名","取引先名"]);
     const cPhone    = col(["電話番号","TEL","電話"]);
     const cCallType = col(["通話種別","架電種別","種別"]);
     const cTags     = col(["タグ","ラベル"]);
     const cDate     = col(["架電日時","通話日時","日時","日付","架電日"]);
     const cMemo     = col(["メモ","備考","コメント"]);
-    const records = []; let filtered = 0, skipped = 0;
+    const parsed = []; let filtered = 0, skipped = 0;
 
     for (const row of rows.slice(1)) {
       if (row.every(c => !c.trim())) continue;
-      const assignee = cAssignee >= 0 ? (row[cAssignee]||"").trim() : "";
+      const operator = cAssignee >= 0 ? (row[cAssignee]||"").trim() : "";
       const isMember = IS_MEMBERS.some(m => {
-        const mn = normName(m), an = normName(assignee);
+        const mn = normName(m), an = normName(operator);
         return an === mn || an.includes(mn) || mn.includes(an);
       });
       if (!isMember) { filtered++; continue; }
@@ -1054,18 +1063,14 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
       if (!company) { skipped++; continue; }
       const callType = cCallType >= 0 ? (row[cCallType]||"").trim() : "";
       const tags     = cTags     >= 0 ? (row[cTags]    ||"").trim() : "";
-      const status   = convertMitelStatus(callType, tags) ?? "不通";
+      const status   = convertMitelStatus(callType, tags); // null可（情報不足時は更新しない）
       const rawDate  = cDate >= 0 ? (row[cDate]||"").trim() : "";
-      const dateStr  = rawDate ? rawDate.slice(0,10).replace(/\//g,"-") : "";
+      const dateStr  = rawDate ? normDate(rawDate) : getToday(); // 日時なければ本日
       const baseMemo = cMemo >= 0 ? (row[cMemo]||"").trim() : "";
-      const memo     = tags ? `【ミーてるタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
-      records.push({
-        id:genId(), companyName:company, phone: cPhone>=0?(row[cPhone]||"").trim():"",
-        email:"", url:"", status, assignee, lastCallDate:dateStr, nextCallDate:"",
-        callCount:1, memo, importedAt:nowIso(), updatedAt:nowIso(), source:"metel", leadAddedDate: getToday(),
-      });
+      const memo     = tags ? `【MiiTelタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
+      parsed.push({ company, operator, status, lastCallDate: dateStr, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
     }
-    return { success:true, records, filtered, skipped };
+    return { success:true, parsed, filtered, skipped };
   }
 
   return (
@@ -1091,8 +1096,8 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
           {[
             { value:"sales", icon:"📁", title:"自分の営業リストを取り込む",
               desc:"企業名・取引先名・会社名を自動マッピング。作成者→担当者、完了予定日→架電日として取り込み。" },
-            { value:"metel", icon:"📞", title:"ミーてるの架電ログを取り込む",
-              desc:"ISメンバー10名に自動絞り込み。タグ → ステータス自動変換 & メモへ記録。" },
+            { value:"metel", icon:"📞", title:"MiiTel架電ログを取り込む",
+              desc:"ISメンバー10名に自動絞り込み。未登録企業は新規追加（追加者記録）、既登録は別担当者・最新架電日を更新。" },
             { value:"past",  icon:"📜", title:"過去商談リスト（プル照合用）を取り込む",
               desc:"企業名・過去の状況・担当者・メモを読込。メインリストと自動照合してバッジ表示します。" },
           ].map(opt => (
@@ -1194,7 +1199,9 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
             ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
             {log.error ? log.error : (
               <span>
-                {log.deals
+                {log.metel
+                  ? <>✅ MiiTel取込完了: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
+                  : log.deals
                   ? <>✅ 過去商談インポート完了: <strong>{log.deals.length}件</strong>（同一企業名は上書き更新）</>
                   : <>✅ インポート完了: <strong>{log.records.length}件</strong>追加</>}
                 {log.filtered  > 0 && ` ／ ISメンバー以外: ${log.filtered}件除外`}
@@ -2720,7 +2727,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
 // ── HelpModal ──────────────────────────────────────────────────────────────────
 function HelpModal({ onClose }) {
   const sections = [
-    { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「ミーてる架電ログ」：ISメンバー10名に自動絞り込み。タグ→ステータス変換。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
+    { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「MiiTel架電ログ」：ISメンバー10名に自動絞り込み。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
+    { icon:"📞", title:"MiiTel架電ログの最新の取り込み仕様", body:`MiiTel（ユーザー名・取引先会社名）のログを取り込むと、企業データベースを自動整理します。\n・未登録の企業 → 新規リードとして自動追加し、架電したオペレーター名を「追加者」列に記録。\n・既登録の企業 → 今回架電したオペレーター名を「別担当者」列に記録し、通話日付を「最新架電日（架電日）」に更新。\n・ISメンバー10名以外のログは自動で除外されます。\n・「追加者」「別担当者」列は列設定メニューから表示切り替えできます。` },
     { icon:"📜", title:"過去商談リスト（プル照合）の活用方法", body:`1. CSVインポート画面の「📜 過去商談リスト（プル照合用）を取り込む」を選択してインポート。\n2. 企業名が一致すると、リスト上の企業名横に過去の状況バッジ（例：過去成約・過去断り）が自動表示されます。\n3. 編集モーダルを開くと、最下部に「過去の商談・架電履歴」エリアが表示され、当時の担当者・日付・メモを確認できます。\n4.「🔍 プル照合」タブでも企業名を貼り付けて照合できます。` },
     { icon:"🔍", title:"プル照合タブ", body:`企業名を1行ずつ貼り付けると、現在のステータスとアクション（至急架電・近日架電・架電日未設定など）を自動判定して一覧表示します。` },
     { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
@@ -3044,6 +3052,60 @@ export default function App() {
       return Object.values(map);
     });
   }, []);
+
+  // MiiTel 架電ログのマージ取込（未登録=新規追加 / 既登録=別担当者・最新架電日更新）
+  const importMetelMerge = useCallback((parsed) => {
+    let added = 0, updated = 0;
+    setRecords(prev => {
+      const byName = new Map(prev.map(r => [normName(r.companyName), r]));
+      parsed.forEach(p => {
+        const key = normName(p.company);
+        const existing = byName.get(key);
+        if (existing) {
+          // 既登録: 別担当者・最新架電日を更新（元の担当者は維持）
+          byName.set(key, {
+            ...existing,
+            otherContact: p.operator,
+            lastCallDate: p.lastCallDate || existing.lastCallDate,
+            status: p.status || existing.status,
+            updatedAt: nowIso(),
+          });
+        } else {
+          // 未登録: 新規リードとして追加。追加者=オペレーター
+          byName.set(key, {
+            id: genId(),
+            companyName: p.company,
+            phone: p.phone || "",
+            status: p.status || "未架電",
+            assignee: "",
+            createdBy: p.operator,      // 追加者
+            otherContact: "",
+            lastCallDate: p.lastCallDate || getToday(),
+            memo: p.memo || "",
+            leadAddedDate: getToday(),
+            source: "metel",
+            importedAt: nowIso(), updatedAt: nowIso(),
+          });
+        }
+      });
+      const next = [...byName.values()];
+      syncToAPI(next);
+      return next;
+    });
+    // 件数集計（現在の records を基準）
+    const existingNames = new Set(records.map(r => normName(r.companyName)));
+    const seen = new Set();
+    parsed.forEach(p => {
+      const key = normName(p.company);
+      if (existingNames.has(key)) { if (!seen.has(key)) updated++; }
+      else if (!seen.has(key)) added++;
+      seen.add(key);
+    });
+    setStatusFilterSet(new Set(Object.keys(STATUS_CFG)));
+    setView("list");
+    setPage(1);
+    return { added, updated };
+  }, [records, syncToAPI]);
 
   // 過去商談の企業名照合ヘルパー
   const findPastDeal = useCallback((companyName) => {
@@ -3684,7 +3746,7 @@ export default function App() {
         <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)} />
       )}
       {showImport && (
-        <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onClose={() => setShowImport(false)} />
+        <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onImportMetel={importMetelMerge} onClose={() => setShowImport(false)} />
       )}
       {showDupe && (
         <DuplicateModal records={records} onClean={cleanDuplicates} onClose={() => setShowDupe(false)} />
