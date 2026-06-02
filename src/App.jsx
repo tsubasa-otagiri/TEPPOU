@@ -2539,7 +2539,8 @@ export default function App() {
 
   // ── Derived data ──────────────────────────────────────────────────────────────
   const filtered = records.filter(r => {
-    if (statusFilterSet.size < ALL_STATUS_KEYS.length && !statusFilterSet.has(r.status)) return false;
+    // statusFilterSet が空 = フィルターなし（全表示）。一部選択時のみ絞り込む
+    if (statusFilterSet.size > 0 && statusFilterSet.size < ALL_STATUS_KEYS.length && !statusFilterSet.has(r.status)) return false;
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
     if (search) {
       const q = search;
@@ -2592,6 +2593,7 @@ export default function App() {
 
   const addRecords = useCallback(recs => {
     setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
+    setStatusFilterSet(new Set(Object.keys(STATUS_CFG))); // インポート後は全ステータス表示
     setPage(1);
   }, [syncToAPI]);
 
