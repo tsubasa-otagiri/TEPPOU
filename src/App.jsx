@@ -1723,6 +1723,7 @@ export default function App() {
   const [view,           setView]           = useState("list");   // "list" | "analysis"
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
+  const [editingCell,    setEditingCell]    = useState(null); // { id, key }
   const [sortKey,        setSortKey]        = useState(null);
   const [sortDir,        setSortDir]        = useState("asc");
   const ALL_STATUS_KEYS = Object.keys(STATUS_CFG);
@@ -1946,6 +1947,16 @@ export default function App() {
     setRecords(p => { const next = p.filter(r => !selected.has(r.id)); syncToAPI(next); return next; });
     setSelected(new Set());
   }, [selected, syncToAPI]);
+
+  const saveInlineDate = useCallback((id, key, value) => {
+    setEditingCell(null);
+    const normalized = normDate(value);
+    setRecords(p => {
+      const next = p.map(r => r.id === id ? { ...r, [key]: normalized, updatedAt: nowIso() } : r);
+      syncToAPI(next);
+      return next;
+    });
+  }, [syncToAPI]);
 
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -2303,18 +2314,46 @@ export default function App() {
                             className="text-blue-600 hover:underline text-xs block max-w-36 truncate">
                             {rec[col.key]}
                           </a>
-                        ) : col.key === "nextCallDate" && rec.nextCallDate ? (
-                          (() => { const nd = normDate(rec.nextCallDate); return (
-                            nd < today
-                              ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} 🔴</span>
-                              : nd === today
-                                ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⚠️</span>
-                                : nd <= soon
-                                  ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⏰</span>
-                                  : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>
-                          ); })()
-                        ) : col.key === "lastCallDate" && rec.lastCallDate ? (
-                          <span className="text-slate-700 text-xs">{fmtDate(normDate(rec.lastCallDate))}</span>
+                        ) : (col.key === "lastCallDate" || col.key === "nextCallDate") ? (
+                          (() => {
+                            const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key;
+                            if (isEditing) return (
+                              <input type="date"
+                                defaultValue={normDate(rec[col.key]) || ""}
+                                autoFocus
+                                className="border border-blue-400 rounded px-1 py-0.5 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                onBlur={e   => saveInlineDate(rec.id, col.key, e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter")  saveInlineDate(rec.id, col.key, e.target.value);
+                                  if (e.key === "Escape") setEditingCell(null);
+                                }}
+                              />
+                            );
+                            const nd = normDate(rec[col.key]);
+                            const openEdit = () => setEditingCell({ id: rec.id, key: col.key });
+                            if (!nd) return (
+                              <span onClick={openEdit}
+                                className="text-slate-300 text-xs cursor-pointer hover:text-slate-500 hover:bg-slate-50 rounded px-1 transition-colors">
+                                — 設定
+                              </span>
+                            );
+                            if (col.key === "nextCallDate") {
+                              const badge = nd < today
+                                ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} 🔴</span>
+                                : nd === today
+                                  ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⚠️</span>
+                                  : nd <= soon
+                                    ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⏰</span>
+                                    : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>;
+                              return <span onClick={openEdit} className="cursor-pointer hover:opacity-70 transition-opacity">{badge}</span>;
+                            }
+                            return (
+                              <span onClick={openEdit}
+                                className="text-slate-700 text-xs cursor-pointer hover:bg-slate-100 rounded px-1 transition-colors">
+                                {fmtDate(nd)}
+                              </span>
+                            );
+                          })()
                         ) : col.key === "memo" ? (
                           <span className="text-slate-600 text-xs block max-w-56 truncate" title={rec.memo||""}>
                             {rec.memo || "—"}
