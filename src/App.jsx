@@ -7,7 +7,8 @@ const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE    = 100;
 const API_BASE        = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
-const PAST_DEALS_KEY  = "teppou_past_deals_v1";   // 過去商談リスト（独立ストレージ）
+const PAST_DEALS_KEY  = "teppou_past_deals_v1";   // 過去商談プル照合用
+const PAST_MGMT_KEY   = "teppou_past_mgmt_v1";    // 過去商談管理（再アプローチ）
 const CLICK_REFRESH_COOLDOWN = 30_000; // クリック更新のクールダウン（30秒）
 
 // ── API クライアント ────────────────────────────────────────────────────────────
@@ -128,6 +129,29 @@ const STATUS_CFG = {
   "8.当社契約":        { row:"bg-gray-100",   bg:"bg-gray-200",   text:"text-gray-800",   border:"border-gray-500",   dot:"bg-gray-700"   },
   "9.アポ獲得":        { row:"bg-red-50",     bg:"bg-red-100",    text:"text-red-900",    border:"border-red-600",    dot:"bg-red-700"    },
 };
+
+// ── 再アプローチステータス ─────────────────────────────────────────────────────
+const REAPPROACH_STATUS = {
+  "未アプローチ": { bg:"bg-slate-100",   text:"text-slate-500",  dot:"bg-slate-400"  },
+  "アプローチ中": { bg:"bg-blue-100",    text:"text-blue-700",   dot:"bg-blue-500"   },
+  "連絡済み":     { bg:"bg-yellow-100",  text:"text-yellow-700", dot:"bg-amber-500"  },
+  "商談中":       { bg:"bg-purple-100",  text:"text-purple-700", dot:"bg-purple-500" },
+  "完了":         { bg:"bg-green-100",   text:"text-green-700",  dot:"bg-green-500"  },
+  "見送り":       { bg:"bg-slate-200",   text:"text-slate-500",  dot:"bg-slate-400"  },
+};
+
+// 過去商談管理CSVヘッダーマッピング
+function mapPastMgmtHeaders(headers) {
+  const m = {};
+  headers.forEach((h, i) => {
+    const n = String(h).replace(/[\s　]/g,"").toLowerCase();
+    if (/取引先名|会社名|企業名/.test(n))     m.companyName  = i;
+    else if (/完了予定日|予定日/.test(n))      m.targetDate   = i;
+    else if (/確度/.test(n))                   m.probability  = i;
+    else if (/作成者|担当者/.test(n))          m.creator      = i;
+  });
+  return m;
+}
 
 // ── リード先（ソース）設定 ─────────────────────────────────────────────────────
 const LEAD_SOURCE_CFG = {
@@ -1796,6 +1820,321 @@ function PullView({ records }) {
   );
 }
 
+// ── PastMgmtView ───────────────────────────────────────────────────────────────
+function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
+  const [search,    setSearch]    = useState("");
+  const [stFilter,  setStFilter]  = useState("all");
+  const [editCell,  setEditCell]  = useState(null); // { id, key }
+  const [log,       setLog]       = useState(null);
+  const [loading,   setLoading]   = useState(false);
+  const fileRef = useRef();
+  const today = getToday();
+
+  // 現在リストの企業名セット（照合用）
+  const currentNames = useMemo(() =>
+    new Set(records.map(r => normName(r.companyName))), [records]);
+
+  const isInCurrent = (name) => {
+    const n = normName(name);
+    return [...currentNames].some(cn => cn === n || cn.includes(n) || n.includes(cn));
+  };
+
+  // フィルタ
+  const filtered = useMemo(() => {
+    return pastMgmt.filter(r => {
+      if (stFilter !== "all" && r.reapproachStatus !== stFilter) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        return (r.companyName||"").toLowerCase().includes(q) ||
+               (r.creator||"").toLowerCase().includes(q) ||
+               (r.reapproachNote||"").toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [pastMgmt, search, stFilter]);
+
+  // ページネーション
+  const [page, setPage] = useState(1);
+  const PAGE = 100;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE));
+  const paginated  = filtered.slice((page-1)*PAGE, page*PAGE);
+
+  // インポート
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    const ext = file.name.split(".").pop().toLowerCase();
+    const process = (rows) => {
+      setTimeout(() => {
+        try {
+          const headers = rows[0];
+          const map = mapPastMgmtHeaders(headers);
+          if (map.companyName === undefined) {
+            setLog({ error:`「取引先名」列が見つかりません。検出: ${headers.filter(h=>h).slice(0,5).join("、")}` });
+            return;
+          }
+          const items = []; let skipped = 0;
+          for (const row of rows.slice(1)) {
+            if (row.every(c => !String(c).trim())) continue;
+            const name = String(row[map.companyName] ?? "").trim();
+            if (!name) { skipped++; continue; }
+            const rawDate = map.targetDate !== undefined ? row[map.targetDate] : "";
+            const td = rawDate instanceof Date ? rawDate.toISOString().slice(0,10)
+                     : rawDate ? normDate(String(rawDate)) : "";
+            items.push({
+              id: genId(),
+              companyName:      name,
+              targetDate:       td,
+              probability:      map.probability !== undefined ? String(row[map.probability]??"") : "",
+              creator:          map.creator     !== undefined ? String(row[map.creator]    ??"").trim() : "",
+              reapproachStatus: "未アプローチ",
+              reapproachDate:   "",
+              reapproachNote:   "",
+              importedAt: nowIso(), updatedAt: nowIso(),
+            });
+          }
+          setPastMgmt(prev => {
+            // 同一企業名は更新しない（新規のみ追加）
+            const existingNames = new Set(prev.map(r => normName(r.companyName)));
+            const news = items.filter(i => !existingNames.has(normName(i.companyName)));
+            return [...prev, ...news];
+          });
+          setLog({ success:true, added: items.length, skipped });
+          setPage(1);
+        } catch(ex) {
+          setLog({ error: `エラー: ${ex.message}` });
+        } finally {
+          setLoading(false);
+        }
+      }, 60);
+    };
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const wb = XLSX.read(ev.target.result, { type:"array", cellDates:true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" });
+        process(rows);
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => process(parseCSV(ev.target.result));
+      reader.readAsText(file, "UTF-8");
+    }
+    e.target.value = "";
+  };
+
+  // セル保存
+  const saveCell = (id, key, val) => {
+    setEditCell(null);
+    setPastMgmt(prev => prev.map(r => r.id === id ? { ...r, [key]: val, updatedAt: nowIso() } : r));
+  };
+
+  const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
+
+  // ステータス集計
+  const stCounts = useMemo(() => {
+    const m = {};
+    pastMgmt.forEach(r => { const s = r.reapproachStatus||"未アプローチ"; m[s]=(m[s]||0)+1; });
+    return m;
+  }, [pastMgmt]);
+
+  return (
+    <div className="space-y-4">
+      {/* ヘッダー */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="flex flex-wrap items-center gap-3 mb-3">
+          <label className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            Excelインポート (.xlsx/.csv)
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
+          </label>
+          {pastMgmt.length > 0 && (
+            <button onClick={() => { if(window.confirm(`過去商談リスト全${pastMgmt.length}件を削除しますか？`)) setPastMgmt([]); }}
+              className="text-xs text-rose-500 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors">
+              リストをクリア
+            </button>
+          )}
+          <span className="text-xs text-slate-400 ml-auto">
+            {pastMgmt.length.toLocaleString()} 件 / 表示: {filtered.length.toLocaleString()} 件
+          </span>
+        </div>
+
+        {/* ステータスフィルター */}
+        {Object.keys(stCounts).length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            <button onClick={() => { setStFilter("all"); setPage(1); }}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter==="all" ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+              全表示
+            </button>
+            {Object.entries(stCounts).map(([s, c]) => {
+              const cfg = REAPPROACH_STATUS[s] ?? {};
+              return (
+                <button key={s} onClick={() => { setStFilter(stFilter===s?"all":s); setPage(1); }}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter===s ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-blue-400 ring-offset-1` : `${cfg.bg} ${cfg.text} border-slate-200`}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>
+                  {s} {c}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 検索 */}
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+            placeholder="企業名・作成者・メモで検索..."
+            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        </div>
+      </div>
+
+      {/* ログ */}
+      {log && (
+        <div className={`text-xs rounded-lg px-4 py-3 ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
+          {log.error || `✅ インポート完了: ${log.added.toLocaleString()}件追加（スキップ: ${log.skipped}件）`}
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
+          インポート処理中...
+        </div>
+      )}
+
+      {/* テーブル */}
+      {pastMgmt.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  {["取引先名","完了予定日","確度(%)","作成者","再アプローチ\nステータス","再アプローチ\n予定日","メモ","現在リスト"].map(h=>(
+                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 whitespace-pre text-xs">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {paginated.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center py-10 text-slate-400">条件に一致するデータがありません</td></tr>
+                ) : paginated.map(rec => {
+                  const cfg = REAPPROACH_STATUS[rec.reapproachStatus||"未アプローチ"] ?? {};
+                  const inCurrent = isInCurrent(rec.companyName);
+                  const isEdit = (key) => editCell?.id === rec.id && editCell?.key === key;
+                  const openEdit = (key) => setEditCell({ id:rec.id, key });
+                  return (
+                    <tr key={rec.id} className={`hover:bg-slate-50/60 transition-colors ${inCurrent ? "bg-teal-50/30" : ""}`}>
+                      {/* 取引先名 */}
+                      <td className="px-3 py-2 font-medium text-slate-800 max-w-40">
+                        <span className="truncate block">{rec.companyName}</span>
+                      </td>
+                      {/* 完了予定日 */}
+                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                        {fmtDate(rec.targetDate) || "—"}
+                      </td>
+                      {/* 確度 */}
+                      <td className="px-3 py-2 text-slate-600 text-center">
+                        {rec.probability ? `${rec.probability}%` : "—"}
+                      </td>
+                      {/* 作成者 */}
+                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{rec.creator||"—"}</td>
+                      {/* 再アプローチステータス */}
+                      <td className="px-3 py-2">
+                        {isEdit("reapproachStatus") ? (
+                          <select autoFocus defaultValue={rec.reapproachStatus||"未アプローチ"}
+                            className={`${inputCls} w-32`}
+                            onChange={e => saveCell(rec.id, "reapproachStatus", e.target.value)}
+                            onBlur={() => setEditCell(null)}
+                            onKeyDown={e => e.key==="Escape" && setEditCell(null)}>
+                            {Object.keys(REAPPROACH_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : (
+                          <span onClick={() => openEdit("reapproachStatus")}
+                            className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${cfg.bg} ${cfg.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>
+                            {rec.reapproachStatus||"未アプローチ"}
+                          </span>
+                        )}
+                      </td>
+                      {/* 再アプローチ予定日 */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {isEdit("reapproachDate") ? (
+                          <input type="date" autoFocus defaultValue={normDate(rec.reapproachDate)||""}
+                            className={`${inputCls} w-32`}
+                            onBlur={e => saveCell(rec.id, "reapproachDate", e.target.value)}
+                            onKeyDown={e => { if(e.key==="Enter") saveCell(rec.id,"reapproachDate",e.target.value); if(e.key==="Escape") setEditCell(null); }}/>
+                        ) : (
+                          <span onClick={() => openEdit("reapproachDate")}
+                            className={`cursor-pointer text-xs ${rec.reapproachDate && normDate(rec.reapproachDate)<today ? "text-red-600 font-bold" : "text-slate-600"} hover:bg-slate-100 rounded px-1 transition-colors`}>
+                            {rec.reapproachDate ? fmtDate(normDate(rec.reapproachDate)) : <span className="text-slate-300">— 設定</span>}
+                          </span>
+                        )}
+                      </td>
+                      {/* メモ */}
+                      <td className="px-3 py-2 max-w-48">
+                        {isEdit("reapproachNote") ? (
+                          <textarea autoFocus defaultValue={rec.reapproachNote||""} rows={2}
+                            className={`${inputCls} w-44 resize-none`}
+                            onBlur={e => saveCell(rec.id,"reapproachNote",e.target.value)}
+                            onKeyDown={e => { if(e.key==="Escape") setEditCell(null); if(e.key==="Enter"&&e.ctrlKey) saveCell(rec.id,"reapproachNote",e.target.value); }}/>
+                        ) : (
+                          <span onClick={() => openEdit("reapproachNote")}
+                            className="cursor-pointer text-slate-600 text-xs block max-w-44 truncate hover:bg-slate-50 rounded transition-colors"
+                            title={rec.reapproachNote||""}>
+                            {rec.reapproachNote || <span className="text-slate-300">— メモ</span>}
+                          </span>
+                        )}
+                      </td>
+                      {/* 現在リスト照合 */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {inCurrent
+                          ? <span className="text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded text-xs font-semibold">✓ リストあり</span>
+                          : <span className="text-slate-300 text-xs">—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {/* ページネーション */}
+          {totalPages > 1 && (
+            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4">
+              <span className="text-xs text-slate-400">
+                {filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件
+              </span>
+              <div className="flex gap-1">
+                {["«","‹"].map((l,i)=>(
+                  <button key={l} onClick={()=>setPage(i===0?1:page-1)} disabled={page===1}
+                    className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">{l}</button>
+                ))}
+                <span className="px-3 py-1 text-xs text-slate-600">{page} / {totalPages}</span>
+                {["›","»"].map((l,i)=>(
+                  <button key={l} onClick={()=>setPage(i===0?page+1:totalPages)} disabled={page===totalPages}
+                    className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">{l}</button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {pastMgmt.length === 0 && !loading && (
+        <div className="bg-white rounded-xl border border-slate-200 py-16 text-center text-slate-400 text-sm">
+          過去商談リストがありません。Excelファイルをインポートしてください。
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── HelpModal ──────────────────────────────────────────────────────────────────
 function HelpModal({ onClose }) {
   const sections = [
@@ -1851,7 +2190,8 @@ export default function App() {
 
   const [loggedIn,       setLoggedIn]       = useState(() => sessionStorage.getItem("teppou_auth")==="1");
   const [records,        setRecords]        = useState([]);
-  const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談リスト
+  const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談プル照合用
+  const [pastMgmt,       setPastMgmt]       = useState([]);   // 過去商談管理（再アプローチ）
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [showHelp,       setShowHelp]       = useState(false);
   const [search,         setSearch]         = useState("");
@@ -1949,6 +2289,7 @@ export default function App() {
     // settings はローカルのみ
     try { const s = localStorage.getItem(SETTINGS_KEY);   if (s) setSettings(JSON.parse(s));  } catch {}
     try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {}
+    try { const s = localStorage.getItem(PAST_MGMT_KEY);  if (s) setPastMgmt(JSON.parse(s));  } catch {}
 
     if (API_BASE) {
       // API から取得 → なければローカルキャッシュ → なければ API に移行
@@ -1992,6 +2333,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
+  useEffect(() => { try { localStorage.setItem(PAST_MGMT_KEY,  JSON.stringify(pastMgmt));  } catch {} }, [pastMgmt]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2222,7 +2564,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 分析"],["pull","🔍 プル照合"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 分析"],["pull","🔍 プル照合"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -2236,6 +2578,9 @@ export default function App() {
 
         {/* ── Pull view ── */}
         {view==="pull" && <PullView records={records} />}
+
+        {/* ── 過去商談管理 ── */}
+        {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
