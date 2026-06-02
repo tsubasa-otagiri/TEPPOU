@@ -1524,6 +1524,215 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
   );
 }
 
+// ── レポート自動生成 ───────────────────────────────────────────────────────────
+function generateReport(records, today, soon) {
+  const total = records.length;
+  if (total === 0) return null;
+
+  const todayCalls   = records.filter(r => normDate(r.lastCallDate) === today).length;
+  const apo          = records.filter(r => r.status === "9.アポ獲得").length;
+  const apoRate      = (apo / total * 100).toFixed(1);
+  const overdue      = records.filter(r => { const nd = normDate(r.nextCallDate); return nd && nd < today && !["8.不要","8.当社契約"].includes(r.status); });
+  const upcoming     = records.filter(r => { const nd = normDate(r.nextCallDate); return nd && nd >= today && nd <= soon; });
+  const mikaiden     = records.filter(r => !r.lastCallDate || r.lastCallDate === "").length;
+  const statusMap    = {};
+  records.forEach(r => { statusMap[r.status] = (statusMap[r.status]||0)+1; });
+
+  // 店舗数別アポ率
+  const STORE_RANGES = [
+    ["1000店舗以上",1000,Infinity],["500〜999店舗",500,999],["300〜499店舗",300,499],
+    ["100〜299店舗",100,299],["25〜99店舗",25,99],["10〜24店舗",10,24],["10店舗以下",0,9],
+  ];
+  const storeStats = STORE_RANGES.map(([label,lo,hi]) => {
+    const inRange = records.filter(r => { const n=parseInt(String(r.storeCount||"").replace(/,/g,""))||0; return n>=lo&&n<=hi; });
+    const a = inRange.filter(r => r.status==="9.アポ獲得").length;
+    return { label, count:inRange.length, apo:a, rate: inRange.length ? (a/inRange.length*100) : 0 };
+  }).filter(d=>d.count>0).sort((a,b)=>b.rate-a.rate);
+  const bestSegment = storeStats[0];
+
+  // 担当者別アポ数
+  const assigneeApo = {};
+  records.filter(r=>r.status==="9.アポ獲得").forEach(r=>{ const a=r.assignee||"未設定"; assigneeApo[a]=(assigneeApo[a]||0)+1; });
+  const topAssignee = Object.entries(assigneeApo).sort((a,b)=>b[1]-a[1])[0];
+
+  // コメント生成
+  const insights = [];
+  const actions  = [];
+  const strategy = [];
+
+  // 架電サマリー
+  if (todayCalls > 0) insights.push(`本日 **${todayCalls}社** に架電済みです。`);
+  else insights.push(`本日の架電はまだありません。企業名をクリックして架電を記録しましょう。`);
+
+  // アポ率評価
+  const apoRateNum = parseFloat(apoRate);
+  if (apoRateNum >= 8) insights.push(`アポ獲得率 **${apoRate}%** は非常に高い水準です。現在のアプローチを継続してください。`);
+  else if (apoRateNum >= 4) insights.push(`アポ獲得率 **${apoRate}%** は良好なペースです。`);
+  else if (apoRateNum >= 1) insights.push(`アポ獲得率 **${apoRate}%** です。アプローチ方法の見直しで改善が期待できます。`);
+  else if (total > 100) insights.push(`アポ獲得率 **${apoRate}%** と低めです。ターゲット選定とトーク改善を検討してください。`);
+
+  // 期限超過
+  if (overdue.length > 0) {
+    actions.push(`🔴 **期限超過** ${overdue.length}社 — 本日優先的に架電してください。`);
+  }
+  if (upcoming.length > 0) {
+    actions.push(`⚠️ **3日以内の架電予定** ${upcoming.length}社 — 事前準備をしておきましょう。`);
+  }
+  if (mikaiden > 0) {
+    actions.push(`📞 **未架電** ${mikaiden.toLocaleString()}社 — 優先度の高い企業からアプローチしてください。`);
+  }
+
+  // 戦略提案
+  if (bestSegment && bestSegment.rate > 0) {
+    strategy.push(`🎯 **「${bestSegment.label}」が最高アポ率 ${bestSegment.rate.toFixed(1)}%** — このセグメントへの集中アプローチを推奨します（${bestSegment.count}社中${bestSegment.apo}社成功）。`);
+  }
+  if (topAssignee) {
+    strategy.push(`🏆 **${topAssignee[0]}** がアポ獲得数トップ（${topAssignee[1]}件）。成功事例をチームで共有しましょう。`);
+  }
+  if (storeStats.length >= 2) {
+    const worst = [...storeStats].sort((a,b)=>a.rate-b.rate).find(d=>d.count>=10);
+    if (worst && worst.rate < 1) strategy.push(`📉 「${worst.label}」のアポ率が ${worst.rate.toFixed(1)}%と低い傾向があります。このセグメントのアプローチ方法の見直しを検討してください。`);
+  }
+  const connectCount = (statusMap["6.コネクト（改）"]||0) + (statusMap["7.コネクト（無）"]||0);
+  if (connectCount > total * 0.2) {
+    strategy.push(`💬 コネクト状態の企業が全体の ${(connectCount/total*100).toFixed(0)}%（${connectCount}社）あります。担当者へのコネクトをアポに転換する粘り強いフォローが重要です。`);
+  }
+
+  return { todayCalls, apo, apoRate, total, overdue: overdue.length, upcoming: upcoming.length, insights, actions, strategy, storeStats, topAssignee };
+}
+
+function ReportView({ records }) {
+  const today = getToday();
+  const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+  const report = generateReport(records, today, soon);
+
+  // AnalysisView のグラフ部分も残す
+  const statusMap = {};
+  records.forEach(r => { statusMap[r.status]=(statusMap[r.status]||0)+1; });
+  const maxSt = Math.max(...Object.values(statusMap),1);
+  const statusData = Object.keys(STATUS_CFG)
+    .map(s => ({ status:s, count:statusMap[s]||0, cfg:STATUS_CFG[s] }))
+    .filter(d=>d.count>0).sort((a,b)=>b.count-a.count);
+
+  const Bar = ({count,max,colorClass}) => (
+    <div className="flex-1 bg-slate-100 rounded-full h-4 overflow-hidden">
+      <div className={`h-full rounded-full ${colorClass}`} style={{width:`${Math.max(2,count/max*100)}%`}}/>
+    </div>
+  );
+
+  if (!report) return (
+    <div className="bg-white rounded-xl border border-slate-200 py-16 text-center text-slate-400 text-sm">
+      データがありません。CSVをインポートしてください。
+    </div>
+  );
+
+  const Section = ({title, children}) => (
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
+      <h3 className="text-sm font-bold text-slate-700 mb-3">{title}</h3>
+      {children}
+    </div>
+  );
+
+  const renderMd = (text) => {
+    const parts = text.split(/\*\*(.*?)\*\*/g);
+    return parts.map((p, i) => i % 2 === 1 ? <strong key={i}>{p}</strong> : p);
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* KPI */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label:"総件数",     value:report.total.toLocaleString(),  color:"text-blue-600",   bg:"bg-blue-50"   },
+          { label:"本日架電数",  value:report.todayCalls,              color:"text-amber-600",  bg:"bg-amber-50"  },
+          { label:"アポ数",     value:report.apo,                     color:"text-teal-600",   bg:"bg-teal-50"   },
+          { label:"アポ率",     value:`${report.apoRate}%`,           color:"text-green-600",  bg:"bg-green-50"  },
+        ].map(k=>(
+          <div key={k.label} className={`${k.bg} rounded-xl border border-slate-200 p-4 text-center`}>
+            <div className={`text-3xl font-bold ${k.color}`}>{k.value}</div>
+            <div className="text-xs text-slate-500 mt-1">{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* 今日のアクション */}
+      {report.actions.length > 0 && (
+        <Section title="📌 今日のアクション">
+          <ul className="space-y-2">
+            {report.actions.map((a,i) => (
+              <li key={i} className="text-sm text-slate-700 bg-slate-50 rounded-lg px-4 py-2.5">{renderMd(a)}</li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {/* インサイト */}
+      <Section title="💡 データインサイト">
+        <ul className="space-y-2">
+          {report.insights.map((ins,i) => (
+            <li key={i} className="text-sm text-slate-700 leading-relaxed">{renderMd(ins)}</li>
+          ))}
+        </ul>
+      </Section>
+
+      {/* 推奨戦略 */}
+      {report.strategy.length > 0 && (
+        <Section title="🎯 推奨戦略">
+          <ul className="space-y-3">
+            {report.strategy.map((s,i) => (
+              <li key={i} className="text-sm text-slate-700 bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-3 leading-relaxed">{renderMd(s)}</li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {/* ステータス分布 */}
+      <Section title="📊 ステータス別件数">
+        <div className="space-y-2">
+          {statusData.map(d => (
+            <div key={d.status} className="flex items-center gap-2">
+              <span className="text-xs text-slate-600 w-32 shrink-0 truncate">{d.status}</span>
+              <Bar count={d.count} max={maxSt} colorClass={d.cfg?.dot??"bg-slate-400"} />
+              <span className="text-xs font-bold text-slate-700 w-14 text-right shrink-0">{d.count.toLocaleString()}</span>
+              <span className="text-xs text-slate-400 w-9 text-right shrink-0">{Math.round(d.count/records.length*100)}%</span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* 店舗数別アポ率 */}
+      {report.storeStats.length > 0 && (
+        <Section title="🏪 店舗数別アポ率">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+                  <th className="pb-2 font-semibold">店舗数</th>
+                  <th className="pb-2 font-semibold text-right">社数</th>
+                  <th className="pb-2 font-semibold text-right">アポ</th>
+                  <th className="pb-2 font-semibold text-right">率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.storeStats.map(d => (
+                  <tr key={d.label} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-2 text-slate-700 font-medium">{d.label}</td>
+                    <td className="py-2 text-right text-slate-600">{d.count.toLocaleString()}</td>
+                    <td className="py-2 text-right font-bold text-blue-700">{d.apo}</td>
+                    <td className={`py-2 text-right font-semibold ${d.rate>=8?"text-teal-600":d.rate>=4?"text-blue-600":"text-slate-500"}`}>
+                      {d.rate.toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+    </div>
+  );
+}
+
 // ── AnalysisView ───────────────────────────────────────────────────────────────
 function AnalysisView({ records }) {
   const today = getToday();
@@ -2757,7 +2966,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 分析"],["pull","🔍 プル照合"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pull","🔍 プル照合"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -2767,7 +2976,7 @@ export default function App() {
         </div>
 
         {/* ── Analysis view ── */}
-        {view==="analysis" && <AnalysisView records={records} />}
+        {view==="analysis" && <ReportView records={records} />}
 
         {/* ── Pull view ── */}
         {view==="pull" && <PullView records={records} />}
