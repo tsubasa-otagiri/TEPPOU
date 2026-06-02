@@ -668,8 +668,9 @@ function SettingsModal({ settings, onSave, onClose }) {
   };
 
   const onCropDone = (dataUrl) => {
-    if (cropTarget === "logo")    setLogo(dataUrl);
-    if (cropTarget === "favicon") setFavicon(dataUrl);
+    // ロゴとファビコンは常に同期
+    setLogo(dataUrl);
+    setFavicon(dataUrl);
     setCropSrc(null); setCropTarget(null);
   };
 
@@ -706,7 +707,7 @@ function SettingsModal({ settings, onSave, onClose }) {
               <div className="flex flex-col gap-2">
                 <UploadBtn inputRef={logoRef} target="logo" />
                 {logo && (
-                  <button onClick={() => setLogo(null)}
+                  <button onClick={() => { setLogo(null); setFavicon(null); }}
                     className="text-xs text-rose-500 hover:text-rose-700 text-left">
                     ロゴを削除
                   </button>
@@ -730,7 +731,7 @@ function SettingsModal({ settings, onSave, onClose }) {
               <div className="flex flex-col gap-2">
                 <UploadBtn inputRef={faviconRef} target="favicon" />
                 {favicon && (
-                  <button onClick={() => setFavicon(null)}
+                  <button onClick={() => { setLogo(null); setFavicon(null); }}
                     className="text-xs text-rose-500 hover:text-rose-700 text-left">
                     ファビコンを削除
                   </button>
