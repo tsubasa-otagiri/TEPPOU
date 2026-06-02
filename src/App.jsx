@@ -2321,7 +2321,17 @@ export default function App() {
                             </select>
                           );
                         } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
-                          editEl = mkInput("date");
+                          // 架電日はデフォルトを「本日」、次回架電日は既存値
+                          const dateDefault = col.key === "lastCallDate"
+                            ? (normDate(rec[col.key]) || today)
+                            : (normDate(rec[col.key]) || "");
+                          editEl = (
+                            <input type="date" autoFocus defaultValue={dateDefault}
+                              className={`${inputCls} w-32`}
+                              onBlur={e    => save(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
+                            />
+                          );
                         } else if (col.key === "storeCount") {
                           editEl = mkInput("number");
                         } else if (col.key === "memo") {
