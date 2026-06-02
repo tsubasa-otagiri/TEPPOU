@@ -2421,7 +2421,12 @@ export default function App() {
                     </td>
                   </tr>
                 ) : paginated.map(rec => {
-                  const rowColor = selected.has(rec.id) ? "bg-blue-100" : (STATUS_CFG[rec.status]?.row ?? "");
+                  const isToday  = normDate(rec.lastCallDate) === today;
+                  const rowColor = selected.has(rec.id)
+                    ? "bg-blue-100"
+                    : isToday
+                      ? "bg-yellow-100 border-l-4 border-yellow-400"
+                      : (STATUS_CFG[rec.status]?.row ?? "");
                   return (
                   <tr key={rec.id} className={`transition-colors hover:brightness-95 ${rowColor}`}>
                     <td className="px-3 py-2.5">
