@@ -1820,15 +1820,35 @@ function PullView({ records }) {
   );
 }
 
+// ── 過去商談専用追加列（ALL_COLUMNSに含まれない） ──────────────────────────────
+const PAST_EXTRA_COLS = [
+  { key:"targetDate",       label:"完了予定日",         required:false },
+  { key:"probability",      label:"確度(%)",            required:false },
+  { key:"reapproachStatus", label:"再アプローチ",       required:false },
+  { key:"reapproachDate",   label:"再アプローチ予定日", required:false },
+];
+const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
+const DEFAULT_PAST_VISIBLE = [
+  "companyName","lastCallDate","nextCallDate","status","storeCount","phone",
+  "assignee","leadSource","memo",
+  "targetDate","probability","reapproachStatus","reapproachDate",
+];
+
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
 function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
-  const [search,    setSearch]    = useState("");
-  const [stFilter,  setStFilter]  = useState("all");
-  const [editCell,  setEditCell]  = useState(null); // { id, key }
-  const [log,       setLog]       = useState(null);
-  const [loading,   setLoading]   = useState(false);
-  const fileRef = useRef();
+  const [search,       setSearch]       = useState("");
+  const [stFilter,     setStFilter]     = useState("all");
+  const [editCell,     setEditCell]     = useState(null);
+  const [log,          setLog]          = useState(null);
+  const [loading,      setLoading]      = useState(false);
+  const [visibleCols,  setVisibleCols]  = useState(DEFAULT_PAST_VISIBLE);
+  const [showColDrop,  setShowColDrop]  = useState(false);
+  const [sortKey,      setSortKey]      = useState(null);
+  const [sortDir,      setSortDir]      = useState("asc");
+  const colDropRef = useRef();
+  const fileRef    = useRef();
   const today = getToday();
+  const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
 
   // 現在リストの企業名セット（照合用）
   const currentNames = useMemo(() =>
@@ -1839,63 +1859,108 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
     return [...currentNames].some(cn => cn === n || cn.includes(n) || n.includes(cn));
   };
 
-  // フィルタ
+  // フィルタ・ソート
   const filtered = useMemo(() => {
-    return pastMgmt.filter(r => {
-      if (stFilter !== "all" && r.reapproachStatus !== stFilter) return false;
+    let rs = pastMgmt.filter(r => {
+      if (stFilter !== "all" && (r.reapproachStatus||"未アプローチ") !== stFilter) return false;
       if (search) {
         const q = search.toLowerCase();
-        return (r.companyName||"").toLowerCase().includes(q) ||
-               (r.creator||"").toLowerCase().includes(q) ||
-               (r.reapproachNote||"").toLowerCase().includes(q);
+        return ALL_PAST_COLS.some(c => String(r[c.key]||"").toLowerCase().includes(q));
       }
       return true;
     });
-  }, [pastMgmt, search, stFilter]);
+    if (sortKey) {
+      rs = [...rs].sort((a, b) => {
+        const va = String(a[sortKey]||""), vb = String(b[sortKey]||"");
+        const cmp = va.localeCompare(vb, "ja");
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+    return rs;
+  }, [pastMgmt, search, stFilter, sortKey, sortDir]);
 
-  // ページネーション
   const [page, setPage] = useState(1);
   const PAGE = 100;
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE));
   const paginated  = filtered.slice((page-1)*PAGE, page*PAGE);
+
+  // 表示列定義
+  const visibleDefs = ALL_PAST_COLS.filter(c => visibleCols.includes(c.key));
+
+  // カラムドロップ外側クリックで閉じる
+  useEffect(() => {
+    if (!showColDrop) return;
+    const fn = e => { if (colDropRef.current && !colDropRef.current.contains(e.target)) setShowColDrop(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [showColDrop]);
 
   // インポート
   const handleFile = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setLoading(true);
-    const ext = file.name.split(".").pop().toLowerCase();
-    const process = (rows) => {
+    const doProcess = (rows) => {
       setTimeout(() => {
         try {
           const headers = rows[0];
           const map = mapPastMgmtHeaders(headers);
-          if (map.companyName === undefined) {
-            setLog({ error:`「取引先名」列が見つかりません。検出: ${headers.filter(h=>h).slice(0,5).join("、")}` });
-            return;
+          // 通常のsalesヘッダーも試みる
+          const salesMap = mapSalesHeaders(headers);
+          const compIdx = map.companyName ?? salesMap.companyName;
+          if (compIdx === undefined) {
+            setLog({ error:`「取引先名」「企業名」列が見つかりません。検出: ${headers.filter(h=>h).slice(0,6).join("、")}` });
+            setLoading(false); return;
           }
           const items = []; let skipped = 0;
+          const g = (idx, row) => idx !== undefined ? String(row[idx]??'').trim() : "";
           for (const row of rows.slice(1)) {
             if (row.every(c => !String(c).trim())) continue;
-            const name = String(row[map.companyName] ?? "").trim();
+            const name = String(row[compIdx]??"").trim();
             if (!name) { skipped++; continue; }
             const rawDate = map.targetDate !== undefined ? row[map.targetDate] : "";
             const td = rawDate instanceof Date ? rawDate.toISOString().slice(0,10)
                      : rawDate ? normDate(String(rawDate)) : "";
             items.push({
               id: genId(),
-              companyName:      name,
+              // ALL_COLUMNS フィールド
+              companyName:   name,
+              phone:         g(salesMap.phone, row),
+              email:         g(salesMap.email, row),
+              hpSite:        g(salesMap.hpSite, row),
+              gbp:           g(salesMap.gbp, row),
+              gbpSiteUrl:    g(salesMap.gbpSiteUrl, row),
+              gbpManagement: g(salesMap.gbpManagement, row),
+              status:        g(salesMap.status, row) || "未架電",
+              assignee:      g(salesMap.assignee ?? map.creator, row),
+              department:    g(salesMap.department, row),
+              industry:      g(salesMap.industry, row),
+              leadSource:    g(salesMap.leadSource, row),
+              absenceReason: g(salesMap.absenceReason, row),
+              memo:          g(salesMap.memo, row),
+              storeCount:    g(salesMap.storeCount, row),
+              refusalReason: g(salesMap.refusalReason, row),
+              posting:       g(salesMap.posting, row),
+              review:        g(salesMap.review, row),
+              sns:           g(salesMap.sns, row),
+              instagram:     g(salesMap.instagram, row),
+              line:          g(salesMap.line, row),
+              facebook:      g(salesMap.facebook, row),
+              twitter:       g(salesMap.twitter, row),
+              os:            g(salesMap.os, row),
+              mailFlag:      g(salesMap.mailFlag, row),
+              lastCallDate:  normDate(g(salesMap.lastCallDate, row)),
+              nextCallDate:  normDate(g(salesMap.nextCallDate, row)),
+              leadAddedDate: getToday(),
+              // 過去商談専用
               targetDate:       td,
               probability:      map.probability !== undefined ? String(row[map.probability]??"") : "",
-              creator:          map.creator     !== undefined ? String(row[map.creator]    ??"").trim() : "",
               reapproachStatus: "未アプローチ",
               reapproachDate:   "",
-              reapproachNote:   "",
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
           setPastMgmt(prev => {
-            // 同一企業名は更新しない（新規のみ追加）
             const existingNames = new Set(prev.map(r => normName(r.companyName)));
             const news = items.filter(i => !existingNames.has(normName(i.companyName)));
             return [...prev, ...news];
@@ -1904,233 +1969,245 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records }) {
           setPage(1);
         } catch(ex) {
           setLog({ error: `エラー: ${ex.message}` });
-        } finally {
-          setLoading(false);
-        }
+        } finally { setLoading(false); }
       }, 60);
     };
+    const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "xlsx" || ext === "xls") {
       const reader = new FileReader();
       reader.onload = ev => {
         const wb = XLSX.read(ev.target.result, { type:"array", cellDates:true });
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" });
-        process(rows);
+        doProcess(XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" }));
       };
       reader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();
-      reader.onload = ev => process(parseCSV(ev.target.result));
+      reader.onload = ev => doProcess(parseCSV(ev.target.result));
       reader.readAsText(file, "UTF-8");
     }
     e.target.value = "";
   };
 
-  // セル保存
   const saveCell = (id, key, val) => {
     setEditCell(null);
-    setPastMgmt(prev => prev.map(r => r.id === id ? { ...r, [key]: val, updatedAt: nowIso() } : r));
+    const normalized = (key === "lastCallDate" || key === "nextCallDate" || key === "targetDate" || key === "reapproachDate")
+      ? normDate(val) : val;
+    setPastMgmt(prev => prev.map(r => r.id === id ? { ...r, [key]: normalized, updatedAt: nowIso() } : r));
   };
 
-  const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
-
-  // ステータス集計
   const stCounts = useMemo(() => {
     const m = {};
     pastMgmt.forEach(r => { const s = r.reapproachStatus||"未アプローチ"; m[s]=(m[s]||0)+1; });
     return m;
   }, [pastMgmt]);
 
+  const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
+
   return (
     <div className="space-y-4">
-      {/* ヘッダー */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex flex-wrap items-center gap-3 mb-3">
+      {/* ツールバー */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
             </svg>
-            Excelインポート (.xlsx/.csv)
+            Excelインポート
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
           </label>
+          {/* 列設定 */}
+          <div className="relative" ref={colDropRef}>
+            <button onClick={() => setShowColDrop(v=>!v)}
+              className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M14 3v18"/>
+              </svg>
+              列設定
+              <svg className={`w-3 h-3 transition-transform ${showColDrop?"rotate-180":""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            {showColDrop && (
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 min-w-52 max-h-80 overflow-y-auto">
+                <p className="text-xs font-semibold text-slate-400 mb-2 px-1">表示する列</p>
+                {ALL_PAST_COLS.map(col => (
+                  <label key={col.key} className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
+                    <input type="checkbox" checked={visibleCols.includes(col.key)}
+                      onChange={e => setVisibleCols(p => e.target.checked ? [...p, col.key] : p.filter(k=>k!==col.key))}
+                      className="rounded border-slate-300 text-blue-600"/>
+                    <span className="text-xs text-slate-700">{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           {pastMgmt.length > 0 && (
             <button onClick={() => { if(window.confirm(`過去商談リスト全${pastMgmt.length}件を削除しますか？`)) setPastMgmt([]); }}
               className="text-xs text-rose-500 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors">
               リストをクリア
             </button>
           )}
-          <span className="text-xs text-slate-400 ml-auto">
-            {pastMgmt.length.toLocaleString()} 件 / 表示: {filtered.length.toLocaleString()} 件
-          </span>
+          <span className="text-xs text-slate-400 ml-auto">{pastMgmt.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
         </div>
-
-        {/* ステータスフィルター */}
+        {/* 再アプローチフィルター */}
         {Object.keys(stCounts).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
+          <div className="flex flex-wrap gap-1.5">
             <button onClick={() => { setStFilter("all"); setPage(1); }}
               className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter==="all" ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
               全表示
             </button>
-            {Object.entries(stCounts).map(([s, c]) => {
-              const cfg = REAPPROACH_STATUS[s] ?? {};
+            {Object.entries(stCounts).map(([s,c]) => {
+              const cfg = REAPPROACH_STATUS[s]??{};
               return (
                 <button key={s} onClick={() => { setStFilter(stFilter===s?"all":s); setPage(1); }}
-                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter===s ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-blue-400 ring-offset-1` : `${cfg.bg} ${cfg.text} border-slate-200`}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>
+                  className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter===s ? `${cfg.bg} ${cfg.text} border-current ring-2 ring-blue-400 ring-offset-1` : `${cfg.bg||"bg-slate-100"} ${cfg.text||"text-slate-600"} border-slate-200`}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot||"bg-slate-400"}`}/>
                   {s} {c}
                 </button>
               );
             })}
           </div>
         )}
-
         {/* 検索 */}
         <div className="relative">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
           </svg>
           <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="企業名・作成者・メモで検索..."
+            placeholder="企業名・担当者・メモなどで検索..."
             className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
         </div>
       </div>
 
       {/* ログ */}
-      {log && (
-        <div className={`text-xs rounded-lg px-4 py-3 ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
-          {log.error || `✅ インポート完了: ${log.added.toLocaleString()}件追加（スキップ: ${log.skipped}件）`}
-        </div>
-      )}
-
-      {loading && (
-        <div className="flex items-center gap-2 text-sm text-slate-500">
-          <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>
-          インポート処理中...
-        </div>
-      )}
+      {log && <div className={`text-xs rounded-lg px-4 py-3 ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
+        {log.error || `✅ ${log.added.toLocaleString()}件追加（スキップ: ${log.skipped}件）`}
+      </div>}
+      {loading && <div className="flex items-center gap-2 text-sm text-slate-500">
+        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/> インポート処理中...
+      </div>}
 
       {/* テーブル */}
-      {pastMgmt.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  {["取引先名","完了予定日","確度(%)","作成者","再アプローチ\nステータス","再アプローチ\n予定日","メモ","現在リスト"].map(h=>(
-                    <th key={h} className="px-3 py-2.5 text-left font-semibold text-slate-500 whitespace-pre text-xs">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paginated.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center py-10 text-slate-400">条件に一致するデータがありません</td></tr>
-                ) : paginated.map(rec => {
-                  const cfg = REAPPROACH_STATUS[rec.reapproachStatus||"未アプローチ"] ?? {};
-                  const inCurrent = isInCurrent(rec.companyName);
-                  const isEdit = (key) => editCell?.id === rec.id && editCell?.key === key;
-                  const openEdit = (key) => setEditCell({ id:rec.id, key });
-                  return (
-                    <tr key={rec.id} className={`hover:bg-slate-50/60 transition-colors ${inCurrent ? "bg-teal-50/30" : ""}`}>
-                      {/* 取引先名 */}
-                      <td className="px-3 py-2 font-medium text-slate-800 max-w-40">
-                        <span className="truncate block">{rec.companyName}</span>
-                      </td>
-                      {/* 完了予定日 */}
-                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
-                        {fmtDate(rec.targetDate) || "—"}
-                      </td>
-                      {/* 確度 */}
-                      <td className="px-3 py-2 text-slate-600 text-center">
-                        {rec.probability ? `${rec.probability}%` : "—"}
-                      </td>
-                      {/* 作成者 */}
-                      <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{rec.creator||"—"}</td>
-                      {/* 再アプローチステータス */}
-                      <td className="px-3 py-2">
-                        {isEdit("reapproachStatus") ? (
-                          <select autoFocus defaultValue={rec.reapproachStatus||"未アプローチ"}
-                            className={`${inputCls} w-32`}
-                            onChange={e => saveCell(rec.id, "reapproachStatus", e.target.value)}
-                            onBlur={() => setEditCell(null)}
-                            onKeyDown={e => e.key==="Escape" && setEditCell(null)}>
-                            {Object.keys(REAPPROACH_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
-                          </select>
-                        ) : (
-                          <span onClick={() => openEdit("reapproachStatus")}
-                            className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${cfg.bg} ${cfg.text}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>
-                            {rec.reapproachStatus||"未アプローチ"}
-                          </span>
-                        )}
-                      </td>
-                      {/* 再アプローチ予定日 */}
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {isEdit("reapproachDate") ? (
-                          <input type="date" autoFocus defaultValue={normDate(rec.reapproachDate)||""}
-                            className={`${inputCls} w-32`}
-                            onBlur={e => saveCell(rec.id, "reapproachDate", e.target.value)}
-                            onKeyDown={e => { if(e.key==="Enter") saveCell(rec.id,"reapproachDate",e.target.value); if(e.key==="Escape") setEditCell(null); }}/>
-                        ) : (
-                          <span onClick={() => openEdit("reapproachDate")}
-                            className={`cursor-pointer text-xs ${rec.reapproachDate && normDate(rec.reapproachDate)<today ? "text-red-600 font-bold" : "text-slate-600"} hover:bg-slate-100 rounded px-1 transition-colors`}>
-                            {rec.reapproachDate ? fmtDate(normDate(rec.reapproachDate)) : <span className="text-slate-300">— 設定</span>}
-                          </span>
-                        )}
-                      </td>
-                      {/* メモ */}
-                      <td className="px-3 py-2 max-w-48">
-                        {isEdit("reapproachNote") ? (
-                          <textarea autoFocus defaultValue={rec.reapproachNote||""} rows={2}
-                            className={`${inputCls} w-44 resize-none`}
-                            onBlur={e => saveCell(rec.id,"reapproachNote",e.target.value)}
-                            onKeyDown={e => { if(e.key==="Escape") setEditCell(null); if(e.key==="Enter"&&e.ctrlKey) saveCell(rec.id,"reapproachNote",e.target.value); }}/>
-                        ) : (
-                          <span onClick={() => openEdit("reapproachNote")}
-                            className="cursor-pointer text-slate-600 text-xs block max-w-44 truncate hover:bg-slate-50 rounded transition-colors"
-                            title={rec.reapproachNote||""}>
-                            {rec.reapproachNote || <span className="text-slate-300">— メモ</span>}
-                          </span>
-                        )}
-                      </td>
-                      {/* 現在リスト照合 */}
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        {inCurrent
-                          ? <span className="text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded text-xs font-semibold">✓ リストあり</span>
-                          : <span className="text-slate-300 text-xs">—</span>}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {/* ページネーション */}
-          {totalPages > 1 && (
-            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4">
-              <span className="text-xs text-slate-400">
-                {filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件
-              </span>
-              <div className="flex gap-1">
-                {["«","‹"].map((l,i)=>(
-                  <button key={l} onClick={()=>setPage(i===0?1:page-1)} disabled={page===1}
-                    className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">{l}</button>
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs border-collapse">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                {visibleDefs.map(col => (
+                  <th key={col.key}
+                    onClick={() => { if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(col.key);setSortDir("asc");} setPage(1); }}
+                    className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors">
+                    <span className="inline-flex items-center gap-1">{col.label}
+                      {sortKey===col.key ? <span className="text-blue-500">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300">⇅</span>}
+                    </span>
+                  </th>
                 ))}
-                <span className="px-3 py-1 text-xs text-slate-600">{page} / {totalPages}</span>
-                {["›","»"].map((l,i)=>(
-                  <button key={l} onClick={()=>setPage(i===0?page+1:totalPages)} disabled={page===totalPages}
-                    className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">{l}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">現在リスト</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginated.length === 0 ? (
+                <tr><td colSpan={visibleDefs.length+1} className="text-center py-14 text-slate-400 text-sm">
+                  {pastMgmt.length === 0 ? "Excelファイルをインポートしてください。" : "条件に一致するデータがありません。"}
+                </td></tr>
+              ) : paginated.map(rec => {
+                const inCurrent = isInCurrent(rec.companyName);
+                return (
+                  <tr key={rec.id} className={`hover:bg-slate-50/60 transition-colors ${inCurrent?"bg-teal-50/30":""}`}>
+                    {visibleDefs.map(col => {
+                      const isEd  = editCell?.id===rec.id && editCell?.key===col.key;
+                      const open  = () => setEditCell({ id:rec.id, key:col.key });
+                      const save  = (v) => saveCell(rec.id, col.key, v);
+                      const cancel= () => setEditCell(null);
+                      const val   = rec[col.key];
 
-      {pastMgmt.length === 0 && !loading && (
-        <div className="bg-white rounded-xl border border-slate-200 py-16 text-center text-slate-400 text-sm">
-          過去商談リストがありません。Excelファイルをインポートしてください。
+                      if (isEd) {
+                        if (col.key === "status") return <td key={col.key} className="px-3 py-2">
+                          <select autoFocus defaultValue={val||"未架電"} className={`${inputCls} w-36`}
+                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                            {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                          </select></td>;
+                        if (col.key === "reapproachStatus") return <td key={col.key} className="px-3 py-2">
+                          <select autoFocus defaultValue={val||"未アプローチ"} className={`${inputCls} w-32`}
+                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                            {Object.keys(REAPPROACH_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
+                          </select></td>;
+                        if (col.key === "leadSource") return <td key={col.key} className="px-3 py-2">
+                          <select autoFocus defaultValue={val||""} className={`${inputCls} w-32`}
+                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                            <option value="">—</option>
+                            {Object.keys(LEAD_SOURCE_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                          </select></td>;
+                        if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="reapproachDate"||col.key==="leadAddedDate") {
+                          return <td key={col.key} className="px-3 py-2">
+                            <input type="date" autoFocus defaultValue={normDate(val)||""}
+                              className={`${inputCls} w-32`}
+                              onBlur={e=>save(e.target.value)}
+                              onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/></td>;
+                        }
+                        if (col.key==="memo") return <td key={col.key} className="px-3 py-2">
+                          <textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-48 resize-none`}
+                            onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/></td>;
+                        return <td key={col.key} className="px-3 py-2">
+                          <input type="text" autoFocus defaultValue={val||""}
+                            className={`${inputCls} w-32`}
+                            onBlur={e=>save(e.target.value)}
+                            onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/></td>;
+                      }
+
+                      // VIEW モード
+                      if (col.key==="companyName") return <td key={col.key} className="px-3 py-2 font-medium text-slate-800 max-w-44">
+                        <span onClick={open} className="cursor-pointer hover:text-blue-600 truncate block transition-colors">{val||"—"}</span></td>;
+                      if (col.key==="status") return <td key={col.key} className="px-3 py-2">
+                        <span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span></td>;
+                      if (col.key==="reapproachStatus") {
+                        const cfg = REAPPROACH_STATUS[val||"未アプローチ"]??{};
+                        return <td key={col.key} className="px-3 py-2">
+                          <span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${cfg.bg} ${cfg.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}/>{val||"未アプローチ"}
+                          </span></td>;
+                      }
+                      if (col.key==="leadSource") return <td key={col.key} className="px-3 py-2">
+                        <span onClick={open} className="cursor-pointer hover:opacity-80"><LeadSourceBadge source={val}/></span></td>;
+                      if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="reapproachDate"||col.key==="leadAddedDate") {
+                        const nd = normDate(val);
+                        return <td key={col.key} className="px-3 py-2 whitespace-nowrap">
+                          <span onClick={open} className={`cursor-pointer text-xs hover:bg-slate-100 rounded px-1 transition-colors ${nd&&nd<today&&(col.key==="reapproachDate"||col.key==="nextCallDate")?"text-red-600 font-bold":"text-slate-600"}`}>
+                            {nd ? fmtDate(nd) : <span className="text-slate-300">— 設定</span>}
+                          </span></td>;
+                      }
+                      if (col.key==="memo") return <td key={col.key} className="px-3 py-2 max-w-48">
+                        <span onClick={open} className="cursor-pointer text-slate-600 text-xs block max-w-44 truncate hover:bg-slate-50 rounded transition-colors" title={val||""}>
+                          {val||<span className="text-slate-300">—</span>}</span></td>;
+                      return <td key={col.key} className="px-3 py-2">
+                        <span onClick={open} className="text-slate-700 text-xs cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
+                          {val||<span className="text-slate-300">—</span>}</span></td>;
+                    })}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {inCurrent
+                        ? <span className="text-teal-700 bg-teal-50 border border-teal-200 px-1.5 py-0.5 rounded text-xs font-semibold">✓ あり</span>
+                        : <span className="text-slate-300 text-xs">—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      )}
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+            <span className="text-xs text-slate-400">{filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件</span>
+            <div className="flex gap-1">
+              <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">«</button>
+              <button onClick={()=>setPage(p=>p-1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">‹</button>
+              <span className="px-3 py-1 text-xs text-slate-600">{page} / {totalPages}</span>
+              <button onClick={()=>setPage(p=>p+1)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">›</button>
+              <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">»</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
