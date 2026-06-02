@@ -2952,10 +2952,16 @@ export default function App() {
   const sortedFiltered = sortKey
     ? [...filtered].sort((a, b) => {
         let va = a[sortKey] ?? "", vb = b[sortKey] ?? "";
-        if (sortKey === "lastCallDate" || sortKey === "nextCallDate") { va = normDate(va); vb = normDate(vb); }
-        if (sortKey === "storeCount") { va = parseInt(String(va).replace(/,/g,""))||0; vb = parseInt(String(vb).replace(/,/g,""))||0; return sortDir==="asc" ? va-vb : vb-va; }
-        const cmp = String(va).localeCompare(String(vb), "ja");
-        return sortDir === "asc" ? cmp : -cmp;
+        let cmp;
+        if (sortKey === "storeCount") {
+          cmp = (parseInt(String(va).replace(/,/g,""))||0) - (parseInt(String(vb).replace(/,/g,""))||0);
+        } else {
+          if (sortKey === "lastCallDate" || sortKey === "nextCallDate") { va = normDate(va); vb = normDate(vb); }
+          cmp = String(va).localeCompare(String(vb), "ja");
+        }
+        const dirCmp = sortDir === "asc" ? cmp : -cmp;
+        // 値が同じ場合は id で固定（行が入れ替わらないように）
+        return dirCmp !== 0 ? dirCmp : String(a.id).localeCompare(String(b.id));
       })
     : filtered;
 
