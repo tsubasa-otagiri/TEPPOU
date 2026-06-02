@@ -1188,6 +1188,148 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
   );
 }
 
+// ── StatusBulkUpdateModal ──────────────────────────────────────────────────────
+function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
+  const [targetStatus, setTargetStatus] = useState("8.当社契約");
+  const [matches, setMatches]           = useState(null); // { names:[], matched:[] }
+  const [log, setLog]                   = useState(null);
+  const [loading, setLoading]           = useState(false);
+  const fileRef = useRef();
+
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true); setLog(null); setMatches(null);
+    const readRows = (rows) => {
+      // 企業名列を検出
+      const headers = rows[0] || [];
+      const nameIdx = headers.findIndex(h => /取引先名?|企業名|会社名|法人名/.test(String(h).replace(/[\s　]/g,"")));
+      const idx = nameIdx >= 0 ? nameIdx : 1; // デフォルト2列目
+      const names = [...new Set(
+        rows.slice(1).map(r => String(r[idx]??'').trim()).filter(n=>n)
+      )];
+      // 現在のリストと照合
+      const matched = records.filter(r =>
+        names.some(n => {
+          const nn = normName(n), rn = normName(r.companyName);
+          return nn === rn || nn.includes(rn) || rn.includes(nn);
+        })
+      );
+      setMatches({ names, matched });
+      setLoading(false);
+    };
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const wb = XLSX.read(ev.target.result, { type:"array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        readRows(XLSX.utils.sheet_to_json(ws, { header:1, defval:"" }).map(r => r.map(c => String(c??'').trim())));
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => readRows(parseCSV(ev.target.result));
+      reader.readAsText(file, "UTF-8");
+    }
+    e.target.value = "";
+  };
+
+  const apply = () => {
+    if (!matches?.matched.length) return;
+    const ids = new Set(matches.matched.map(r => r.id));
+    onUpdate(ids, targetStatus);
+    setLog({ updated: matches.matched.length, status: targetStatus });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-base font-bold text-slate-800">📝 ステータス一括更新</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+
+        {/* ファイル選択 */}
+        <div className="mb-4">
+          <p className="text-xs text-slate-500 mb-2">企業名が含まれる Excel / CSV をアップロードすると、リスト内の一致企業のステータスを一括変更します。</p>
+          <label className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer w-fit transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            ファイルを選択
+            <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
+          </label>
+        </div>
+
+        {loading && <p className="text-xs text-slate-500 mb-4 flex items-center gap-2"><span className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin inline-block"/>照合中...</p>}
+
+        {/* 照合結果 */}
+        {matches && !log && (
+          <>
+            <div className={`rounded-xl px-4 py-3 mb-4 text-sm ${matches.matched.length>0?"bg-teal-50 border border-teal-200 text-teal-800":"bg-slate-50 border border-slate-200 text-slate-500"}`}>
+              ファイル内 <strong>{matches.names.length}</strong> 社 → リスト内 <strong>{matches.matched.length}</strong> 社がマッチしました
+              {matches.matched.length === 0 && <span className="text-xs ml-2">（企業名が一致しませんでした）</span>}
+            </div>
+
+            {matches.matched.length > 0 && (
+              <>
+                {/* マッチ企業プレビュー */}
+                <div className="max-h-32 overflow-y-auto mb-4 border border-slate-200 rounded-xl">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50 sticky top-0">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left text-slate-500">企業名</th>
+                        <th className="px-3 py-1.5 text-left text-slate-500">現在のステータス</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {matches.matched.slice(0,10).map(r => (
+                        <tr key={r.id}>
+                          <td className="px-3 py-1.5 text-slate-700">{r.companyName}</td>
+                          <td className="px-3 py-1.5"><StatusBadge status={r.status}/></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {matches.matched.length > 10 && <p className="text-xs text-slate-400 text-center py-1">他 {matches.matched.length-10} 社…</p>}
+                </div>
+
+                {/* 変更後ステータス */}
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-500 mb-1">変更後のステータス</label>
+                  <select value={targetStatus} onChange={e=>setTargetStatus(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {log && (
+          <div className="bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 mb-4 text-sm">
+            ✅ <strong>{log.updated}社</strong>のステータスを「{log.status}」に更新しました
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
+            {log ? "閉じる" : "キャンセル"}
+          </button>
+          {!log && matches?.matched.length > 0 && (
+            <button onClick={apply}
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition-colors">
+              {matches.matched.length}社を「{targetStatus}」に更新
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── DuplicateModal ─────────────────────────────────────────────────────────────
 // ステータス優先度（低い数字ほど価値が高い → 残す候補）
 const DUPE_PRIORITY = {
@@ -2587,6 +2729,7 @@ export default function App() {
   const [showSettings,   setShowSettings]   = useState(false);
   const [showImport,     setShowImport]     = useState(false);
   const [showDupe,       setShowDupe]       = useState(false);
+  const [showBulkStatus, setShowBulkStatus] = useState(false);
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
@@ -2883,6 +3026,14 @@ export default function App() {
     });
   }, [syncToAPI]);
 
+  const bulkUpdateStatus = useCallback((ids, status) => {
+    setRecords(p => {
+      const next = p.map(r => ids.has(r.id) ? { ...r, status, updatedAt: nowIso() } : r);
+      syncToAPI(next);
+      return next;
+    });
+  }, [syncToAPI]);
+
   const cleanDuplicates = useCallback(ids => {
     const del = new Set(ids);
     setRecords(p => { const next = p.filter(r => !del.has(r.id)); syncToAPI(next); return next; });
@@ -3084,6 +3235,15 @@ export default function App() {
                   d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
               CSVインポート
+            </button>
+
+            {/* ステータス一括更新 */}
+            <button onClick={() => setShowBulkStatus(true)}
+              className="flex items-center gap-1.5 bg-teal-50 hover:bg-teal-100 border border-teal-300 text-teal-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              ステータス一括更新
             </button>
 
             {/* Duplicate cleanse */}
@@ -3432,6 +3592,9 @@ export default function App() {
       )}
       {showDupe && (
         <DuplicateModal records={records} onClean={cleanDuplicates} onClose={() => setShowDupe(false)} />
+      )}
+      {showBulkStatus && (
+        <StatusBulkUpdateModal records={records} onUpdate={bulkUpdateStatus} onClose={() => setShowBulkStatus(false)} />
       )}
       {showNew && (
         <RecordFormModal
