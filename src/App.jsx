@@ -113,6 +113,7 @@ const IS_MEMBERS = [
 ];
 
 const STATUS_CFG = {
+  "未架電":            { row:"",              bg:"bg-slate-100",  text:"text-slate-500",  border:"border-slate-300",  dot:"bg-slate-400"  },
   "0.日程調整":        { row:"bg-rose-50",    bg:"bg-rose-200",   text:"text-rose-800",   border:"border-rose-400",   dot:"bg-rose-600"   },
   "1.高確度":          { row:"bg-pink-50",    bg:"bg-pink-100",   text:"text-pink-700",   border:"border-pink-300",   dot:"bg-pink-500"   },
   "2.優先":            { row:"bg-orange-50",  bg:"bg-orange-100", text:"text-orange-700", border:"border-orange-300", dot:"bg-orange-400" },
@@ -159,7 +160,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
