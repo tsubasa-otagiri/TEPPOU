@@ -2162,8 +2162,11 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             {Object.keys(LEAD_SOURCE_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
                         if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="targetDate"||col.key==="reapproachDate"||col.key==="leadAddedDate") {
+                          const dateDefault = col.key === "lastCallDate"
+                            ? (normDate(val) || today)   // 架電日は未設定なら本日
+                            : (normDate(val) || "");
                           return <td key={col.key} className="px-3 py-2">
-                            <input type="date" autoFocus defaultValue={normDate(val)||""}
+                            <input type="date" autoFocus defaultValue={dateDefault}
                               className={`${inputCls} w-32`}
                               onBlur={e=>save(e.target.value)}
                               onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/></td>;
