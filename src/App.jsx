@@ -2238,8 +2238,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             });
                             setListModal({ name: rec.companyName, matched });
                           }}
-                            className="text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer">
-                            ✓ リストを表示
+                            className="text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap">
+                            ✓ 表示
                           </button>
                         : <span className="text-slate-300 text-xs">—</span>}
                     </td>
