@@ -71,9 +71,10 @@ function IPCheckScreen() {
     </div>
   );
 }
-const IDB_NAME     = "teppou_idb";
-const IDB_VER      = 1;
-const IDB_STORE    = "records";
+const IDB_NAME      = "teppou_idb";
+const IDB_VER       = 2;                    // ストア追加のためバージョンアップ
+const IDB_STORE     = "records";
+const IDB_PAST_MGMT = "past_mgmt";
 
 // ── IndexedDB helpers ──────────────────────────────────────────────────────────
 function idbOpen() {
@@ -83,6 +84,8 @@ function idbOpen() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(IDB_STORE))
         db.createObjectStore(IDB_STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(IDB_PAST_MGMT))
+        db.createObjectStore(IDB_PAST_MGMT, { keyPath: "id" });
     };
     req.onsuccess = e => res(e.target.result);
     req.onerror   = e => rej(e.target.error);
@@ -96,15 +99,23 @@ async function idbGetAll() {
     req.onerror   = e => rej(e.target.error);
   });
 }
-async function idbPutAll(records) {
+async function idbPutAll(records, storeName = IDB_STORE) {
   const db = await idbOpen();
   return new Promise((res, rej) => {
-    const tx    = db.transaction(IDB_STORE, "readwrite");
-    const store = tx.objectStore(IDB_STORE);
+    const tx    = db.transaction(storeName, "readwrite");
+    const store = tx.objectStore(storeName);
     store.clear();
     records.forEach(r => store.put(r));
     tx.oncomplete = res;
     tx.onerror    = e => rej(e.target.error);
+  });
+}
+async function idbGetAllFrom(storeName) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
+    req.onsuccess = () => res(req.result || []);
+    req.onerror   = e => rej(e.target.error);
   });
 }
 
@@ -2438,7 +2449,12 @@ export default function App() {
     // settings はローカルのみ
     try { const s = localStorage.getItem(SETTINGS_KEY);   if (s) setSettings(JSON.parse(s));  } catch {}
     try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {}
-    try { const s = localStorage.getItem(PAST_MGMT_KEY);  if (s) setPastMgmt(JSON.parse(s));  } catch {}
+    idbGetAllFrom(IDB_PAST_MGMT).then(d => {
+      if (d.length > 0) { setPastMgmt(d); }
+      else {
+        try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { const p = JSON.parse(s); setPastMgmt(p); idbPutAll(p, IDB_PAST_MGMT); localStorage.removeItem(PAST_MGMT_KEY); } } catch {}
+      }
+    }).catch(() => { try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {} });
 
     if (API_BASE) {
       // API から取得 → なければローカルキャッシュ → なければ API に移行
@@ -2482,7 +2498,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
-  useEffect(() => { try { localStorage.setItem(PAST_MGMT_KEY,  JSON.stringify(pastMgmt));  } catch {} }, [pastMgmt]);
+  useEffect(() => { idbPutAll(pastMgmt, IDB_PAST_MGMT).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
