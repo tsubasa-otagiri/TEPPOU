@@ -1150,10 +1150,16 @@ const dupePrio = s => DUPE_PRIORITY[s] ?? 50;
 
 // 優先度→更新日の順でソート（先頭＝残す）
 function sortGroupForDupe(rs) {
-  return [...rs].sort((a,b) => {
-    const dp = dupePrio(a.status) - dupePrio(b.status);
-    if (dp !== 0) return dp;
-    return new Date(b.updatedAt||b.importedAt) - new Date(a.updatedAt||a.importedAt);
+  return [...rs].sort((a, b) => {
+    // ① 未架電は最後（削除候補）
+    const aUncalled = a.status === "未架電";
+    const bUncalled = b.status === "未架電";
+    if (aUncalled !== bUncalled) return aUncalled ? 1 : -1;
+
+    // ② 未架電以外は架電日（lastCallDate）が新しい順で残す
+    const aDate = normDate(a.lastCallDate) || normDate(a.updatedAt) || (a.importedAt || "");
+    const bDate = normDate(b.lastCallDate) || normDate(b.updatedAt) || (b.importedAt || "");
+    return bDate.localeCompare(aDate);
   });
 }
 
