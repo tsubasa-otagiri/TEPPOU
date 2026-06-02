@@ -1725,12 +1725,14 @@ export default function App() {
 
   // API同期ヘルパー（mutations から呼ぶ）
   const syncToAPI = useCallback((newRecs) => {
-    if (!apiLoadedRef.current || !API_BASE) return;
+    // IndexedDB/localStorage には常に保存（API未設定でも動く）
+    saveToLocal(newRecs);
+    // API同期はAPIが設定済み・初回ロード完了後のみ
+    if (!API_BASE || !apiLoadedRef.current) return;
     lastWriteRef.current = Date.now();
     apiSet("records", newRecs).catch(e => {
       if (e.status === 403) setIpStatus(false);
     });
-    saveToLocal(newRecs);
   }, [saveToLocal]);
 
   // 初回ロード
