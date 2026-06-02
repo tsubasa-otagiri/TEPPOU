@@ -6,7 +6,8 @@ const PASSWORD     = "0227";
 const STORAGE_KEY  = "teppou_records_v3";   // legacy migration source
 const SETTINGS_KEY = "teppou_settings_v1";
 const PAGE_SIZE    = 100;
-const API_BASE     = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const API_BASE        = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const PAST_DEALS_KEY  = "teppou_past_deals_v1";   // 過去商談リスト（独立ストレージ）
 const CLICK_REFRESH_COOLDOWN = 30_000; // クリック更新のクールダウン（30秒）
 
 // ── API クライアント ────────────────────────────────────────────────────────────
@@ -216,6 +217,20 @@ function mapSalesHeaders(headers) {
     else if (/^fb$|facebook/.test(n))                             m.facebook      = i;
     else if (/^twitter$|^x$|ツイッター/.test(n))                  m.twitter       = i;
     else if (/^os$/.test(n))                                      m.os            = i;
+  });
+  return m;
+}
+
+// 過去商談CSVヘッダーマッピング
+function mapPastDealsHeaders(headers) {
+  const m = {};
+  headers.forEach((h, i) => {
+    const n = h.replace(/[\s　]/g, "").toLowerCase();
+    if (/企業名|会社名|法人名/.test(n))                   m.companyName   = i;
+    else if (/過去.*状況|過去.*ステータス|状況|ステータス|状態/.test(n)) m.pastStatus  = i;
+    else if (/最終架電|架電日|過去.*架電/.test(n))          m.lastCallDate  = i;
+    else if (/担当者?|営業担当/.test(n))                   m.assignee      = i;
+    else if (/メモ|備考|note|コメント|商談メモ|経緯/.test(n)) m.memo          = i;
   });
   return m;
 }
@@ -771,7 +786,7 @@ function downloadTemplate(mode) {
 }
 
 // ── ImportModal ────────────────────────────────────────────────────────────────
-function ImportModal({ onImport, onClose }) {
+function ImportModal({ onImport, onImportPastDeals, onClose }) {
   const [mode,      setMode]      = useState("sales");
   const [inputMode, setInputMode] = useState("file");   // "file" | "paste"
   const [pasteText, setPasteText] = useState("");
@@ -783,12 +798,17 @@ function ImportModal({ onImport, onClose }) {
   const processRows = (rows) => {
     setLoading(true);
     setProgress(`${rows.length.toLocaleString()} 行を解析中...`);
-    // setTimeout で React にスピナー描画の猶予を与えてからブロック処理
     setTimeout(() => {
       try {
-        const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
-        setLog(result);
-        if (result.records?.length > 0) onImport(result.records);
+        if (mode === "past") {
+          const result = doImportPastDeals(rows);
+          setLog(result);
+          if (result.deals?.length > 0) onImportPastDeals(result.deals);
+        } else {
+          const result = mode === "sales" ? doImportSales(rows) : doImportMetel(rows);
+          setLog(result);
+          if (result.records?.length > 0) onImport(result.records);
+        }
       } catch (ex) {
         setLog({ error: `インポートエラー: ${ex.message}`, records: [] });
       } finally {
@@ -797,6 +817,24 @@ function ImportModal({ onImport, onClose }) {
       }
     }, 60);
   };
+
+  function doImportPastDeals(rows) {
+    if (rows.length < 2) return { error:"データ行が不足しています", deals:[] };
+    const headers = rows[0];
+    const map     = mapPastDealsHeaders(headers);
+    if (map.companyName === undefined) {
+      return { error:`「企業名」列が見つかりませんでした。ヘッダー: ${headers.filter(h=>h).slice(0,6).join("、")}`, deals:[] };
+    }
+    const deals = []; let skipped = 0;
+    for (const row of rows.slice(1)) {
+      if (row.every(c => !c.trim())) continue;
+      const company = (row[map.companyName] ?? "").trim();
+      if (!company) { skipped++; continue; }
+      const g = k => map[k] !== undefined ? (row[map[k]] || "").trim() : "";
+      deals.push({ companyName: company, pastStatus: g("pastStatus"), lastCallDate: normDate(g("lastCallDate")), assignee: g("assignee"), memo: g("memo"), importedAt: nowIso() });
+    }
+    return { success:true, deals, skipped, added: deals.length };
+  }
 
   const process = text => processRows(parseCSV(text));
 
@@ -968,6 +1006,8 @@ function ImportModal({ onImport, onClose }) {
               desc:"1行目が集計行のCSVも自動補正。企業名・電話・メモ等を自動マッピング。" },
             { value:"metel", icon:"📞", title:"ミーてるの架電ログを取り込む",
               desc:"ISメンバー10名に自動絞り込み。タグ → ステータス自動変換 & メモへ記録。" },
+            { value:"past",  icon:"📜", title:"過去商談リスト（プル照合用）を取り込む",
+              desc:"企業名・過去の状況・担当者・メモを読込。メインリストと自動照合してバッジ表示します。" },
           ].map(opt => (
             <label key={opt.value}
               className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors
@@ -1067,7 +1107,9 @@ function ImportModal({ onImport, onClose }) {
             ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
             {log.error ? log.error : (
               <span>
-                ✅ インポート完了: <strong>{log.records.length}件</strong>追加
+                {log.deals
+                  ? <>✅ 過去商談インポート完了: <strong>{log.deals.length}件</strong>（同一企業名は上書き更新）</>
+                  : <>✅ インポート完了: <strong>{log.records.length}件</strong>追加</>}
                 {log.filtered  > 0 && ` ／ ISメンバー以外: ${log.filtered}件除外`}
                 {log.skipped   > 0 && ` ／ スキップ: ${log.skipped}件`}
                 {log.autoSkip      && " ／ 1行目を集計行として自動スキップ"}
@@ -1231,7 +1273,7 @@ function DuplicateModal({ records, onClean, onClose }) {
 }
 
 // ── RecordFormModal (shared by New & Edit) ─────────────────────────────────────
-function RecordFormModal({ initial, title, onSave, onClose, onDelete }) {
+function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }) {
   const [form, setForm] = useState({
     companyName:"", phone:"", email:"", mailFlag:"",
     hpSite:"", gbp:"", gbpSiteUrl:"", gbpManagement:"",
@@ -1337,6 +1379,41 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete }) {
               <textarea value={form.memo||""} onChange={e => upd("memo", e.target.value)} rows={4}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             </div>
+
+            {/* 過去商談プル表示 */}
+            {pastDeal && (
+              <div className="col-span-2 mt-2">
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
+                  <p className="text-xs font-bold text-purple-700 mb-3">📜【プル照合】過去の商談・架電履歴</p>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    {pastDeal.pastStatus && (
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">過去の状況</span>
+                        <span className="font-semibold text-purple-800 bg-purple-100 px-2 py-0.5 rounded">{pastDeal.pastStatus}</span>
+                      </div>
+                    )}
+                    {pastDeal.lastCallDate && (
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">過去の最終架電日</span>
+                        <span className="font-semibold text-slate-700">{fmtDate(pastDeal.lastCallDate)}</span>
+                      </div>
+                    )}
+                    {pastDeal.assignee && (
+                      <div>
+                        <span className="text-slate-400 block mb-0.5">当時の担当者</span>
+                        <span className="font-semibold text-slate-700">{pastDeal.assignee}</span>
+                      </div>
+                    )}
+                    {pastDeal.memo && (
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block mb-0.5">当時の商談メモ・経緯</span>
+                        <p className="text-slate-700 whitespace-pre-wrap bg-white rounded-lg p-2 border border-purple-100">{pastDeal.memo}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 shrink-0">
@@ -1689,6 +1766,43 @@ function PullView({ records }) {
   );
 }
 
+// ── HelpModal ──────────────────────────────────────────────────────────────────
+function HelpModal({ onClose }) {
+  const sections = [
+    { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「ミーてる架電ログ」：ISメンバー10名に自動絞り込み。タグ→ステータス変換。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
+    { icon:"📜", title:"過去商談リスト（プル照合）の活用方法", body:`1. CSVインポート画面の「📜 過去商談リスト（プル照合用）を取り込む」を選択してインポート。\n2. 企業名が一致すると、リスト上の企業名横に過去の状況バッジ（例：過去成約・過去断り）が自動表示されます。\n3. 編集モーダルを開くと、最下部に「過去の商談・架電履歴」エリアが表示され、当時の担当者・日付・メモを確認できます。\n4.「🔍 プル照合」タブでも企業名を貼り付けて照合できます。` },
+    { icon:"🔍", title:"プル照合タブ", body:`企業名を1行ずつ貼り付けると、現在のステータスとアクション（至急架電・近日架電・架電日未設定など）を自動判定して一覧表示します。` },
+    { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
+    { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
+    { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
+    { icon:"✏️", title:"インライン編集", body:`テーブルのセルをクリックすると直接編集できます。状況はセレクト、メモはテキストエリア、架電日は本日をデフォルトで表示します。Enterで保存、Escapeでキャンセル。` },
+  ];
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[88vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+          <h2 className="text-base font-bold text-slate-800">📖 TEPPOU 使い方マニュアル</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+          {sections.map(s => (
+            <div key={s.title} className="bg-slate-50 rounded-xl p-4">
+              <p className="text-sm font-bold text-slate-800 mb-2">{s.icon} {s.title}</p>
+              <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">{s.body}</p>
+            </div>
+          ))}
+        </div>
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end shrink-0">
+          <button onClick={onClose}
+            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
+            閉じる
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────────────────
 export default function App() {
   // ── API 同期用 refs ──────────────────────────────────────────────────────────
@@ -1707,7 +1821,9 @@ export default function App() {
 
   const [loggedIn,       setLoggedIn]       = useState(() => sessionStorage.getItem("teppou_auth")==="1");
   const [records,        setRecords]        = useState([]);
+  const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談リスト
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
+  const [showHelp,       setShowHelp]       = useState(false);
   const [search,         setSearch]         = useState("");
   const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -1791,7 +1907,8 @@ export default function App() {
   // 初回ロード
   useEffect(() => {
     // settings はローカルのみ
-    try { const s = localStorage.getItem(SETTINGS_KEY); if (s) setSettings(JSON.parse(s)); } catch {}
+    try { const s = localStorage.getItem(SETTINGS_KEY);   if (s) setSettings(JSON.parse(s));  } catch {}
+    try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {}
 
     if (API_BASE) {
       // API から取得 → なければローカルキャッシュ → なければ API に移行
@@ -1833,7 +1950,8 @@ export default function App() {
     fetchAllFromAPI();
   }, [fetchAllFromAPI]);
 
-  useEffect(() => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {} }, [settings]);
+  useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
+  useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1921,6 +2039,22 @@ export default function App() {
   const visibleDefs = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
+  // 過去商談の追加（同一企業名は上書き）
+  const addPastDeals = useCallback(newDeals => {
+    setPastDeals(prev => {
+      const map = {};
+      prev.forEach(d => { map[normName(d.companyName)] = d; });
+      newDeals.forEach(d => { map[normName(d.companyName)] = { ...map[normName(d.companyName)], ...d }; });
+      return Object.values(map);
+    });
+  }, []);
+
+  // 過去商談の企業名照合ヘルパー
+  const findPastDeal = useCallback((companyName) => {
+    const n = normName(companyName);
+    return pastDeals.find(d => normName(d.companyName) === n || normName(d.companyName).includes(n) || n.includes(normName(d.companyName)));
+  }, [pastDeals]);
+
   const addRecords = useCallback(recs => {
     setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
     setPage(1);
@@ -2028,6 +2162,10 @@ export default function App() {
                 更新
               </button>
             )}
+            <button onClick={() => setShowHelp(true)}
+              className="flex items-center gap-1 text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">
+              📖 ヘルプ
+            </button>
             <button onClick={() => setShowSettings(true)}
               className="flex items-center gap-1 text-xs text-slate-600 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors">
               ⚙️ 設定
@@ -2354,14 +2492,20 @@ export default function App() {
                         const val = rec[col.key];
                         const empty = <span className="text-slate-300 text-xs">—</span>;
                         if (col.key === "companyName") {
+                          const pd = findPastDeal(val);
                           viewEl = (
-                            <span className="group flex items-center gap-1 w-full">
+                            <span className="group flex items-center gap-1 w-full flex-wrap">
                               <span onClick={openEdit}
-                                className="font-medium text-slate-800 text-xs truncate max-w-44 cursor-pointer hover:text-blue-600 transition-colors">
+                                className="font-medium text-slate-800 text-xs truncate max-w-40 cursor-pointer hover:text-blue-600 transition-colors">
                                 {val || "—"}
                               </span>
+                              {pd && (
+                                <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700 border border-purple-300 whitespace-nowrap">
+                                  📜{pd.pastStatus || "過去商談あり"}
+                                </span>
+                              )}
                               <button onClick={e => { e.stopPropagation(); copyCompanyName(val, rec.id); }}
-                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-auto">
                                 {copiedId === rec.id
                                   ? <span className="text-green-500 text-xs">✓</span>
                                   : <svg className="w-3 h-3 text-slate-300 hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -2480,7 +2624,7 @@ export default function App() {
         <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)} />
       )}
       {showImport && (
-        <ImportModal onImport={addRecords} onClose={() => setShowImport(false)} />
+        <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onClose={() => setShowImport(false)} />
       )}
       {showDupe && (
         <DuplicateModal records={records} onClean={cleanDuplicates} onClose={() => setShowDupe(false)} />
@@ -2500,8 +2644,10 @@ export default function App() {
           onSave={form => saveRecord({ ...editRec, ...form })}
           onClose={() => setEditRec(null)}
           onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
+          pastDeal={findPastDeal(editRec.companyName)}
         />
       )}
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
     </div>
   );
 }
