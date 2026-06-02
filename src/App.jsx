@@ -2046,10 +2046,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                 </svg>
                 重複クレンジング
               </button>
-              <button onClick={() => { if(window.confirm(`過去商談リスト全${pastMgmt.length}件を削除しますか？`)) setPastMgmt([]); }}
-                className="text-xs text-rose-500 border border-rose-200 px-3 py-2 rounded-lg hover:bg-rose-50 transition-colors">
-                リストをクリア
-              </button>
             </>
           )}
           <span className="text-xs text-slate-400 ml-auto">{pastMgmt.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
