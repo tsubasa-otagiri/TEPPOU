@@ -1948,11 +1948,11 @@ export default function App() {
     setSelected(new Set());
   }, [selected, syncToAPI]);
 
-  const saveInlineDate = useCallback((id, key, value) => {
+  const saveInlineValue = useCallback((id, key, raw) => {
     setEditingCell(null);
-    const normalized = normDate(value);
+    const value = (key === "lastCallDate" || key === "nextCallDate") ? normDate(raw) : raw;
     setRecords(p => {
-      const next = p.map(r => r.id === id ? { ...r, [key]: normalized, updatedAt: nowIso() } : r);
+      const next = p.map(r => r.id === id ? { ...r, [key]: value, updatedAt: nowIso() } : r);
       syncToAPI(next);
       return next;
     });
@@ -2290,79 +2290,132 @@ export default function App() {
                         onChange={e => toggleSelect(rec.id, e.target.checked)}
                         className="rounded border-slate-300 text-blue-600" />
                     </td>
-                    {visibleDefs.map(col => (
-                      <td key={col.key} className="px-3 py-2.5 whitespace-nowrap max-w-xs">
-                        {col.key === "companyName" ? (
-                          <button onClick={() => copyCompanyName(rec.companyName, rec.id)}
-                            title="クリックでコピー"
-                            className={`group flex items-center gap-1 text-xs text-left w-full transition-colors
-                              ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
-                            <span className="font-medium truncate max-w-48">{rec.companyName||"—"}</span>
-                            {copiedId===rec.id
-                              ? <span className="text-green-500 text-xs shrink-0">✓</span>
-                              : <svg className="w-3 h-3 shrink-0 text-slate-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                    d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    {visibleDefs.map(col => {
+                      const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key;
+                      const openEdit  = () => setEditingCell({ id: rec.id, key: col.key });
+                      const save      = (val) => saveInlineValue(rec.id, col.key, val);
+                      const cancel    = () => setEditingCell(null);
+                      const inputCls  = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white";
+                      const mkInput   = (type, extra = {}) => (
+                        <input type={type} autoFocus defaultValue={
+                            (type === "date") ? normDate(rec[col.key]) || "" : rec[col.key] ?? ""
+                          }
+                          className={`${inputCls} ${type === "date" ? "w-32" : type === "number" ? "w-20" : "w-36"}`}
+                          onBlur={e    => save(e.target.value)}
+                          onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
+                          {...extra}
+                        />
+                      );
+
+                      // ── EDIT MODE ───────────────────────────────────────────
+                      let editEl = null;
+                      if (isEditing) {
+                        if (col.key === "status") {
+                          editEl = (
+                            <select autoFocus defaultValue={rec.status}
+                              className={`${inputCls} w-36`}
+                              onChange={e => save(e.target.value)}
+                              onBlur={cancel}
+                              onKeyDown={e => e.key === "Escape" && cancel()}>
+                              {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          );
+                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
+                          editEl = mkInput("date");
+                        } else if (col.key === "storeCount") {
+                          editEl = mkInput("number");
+                        } else if (col.key === "memo") {
+                          editEl = (
+                            <textarea autoFocus defaultValue={rec.memo || ""}
+                              rows={3}
+                              className={`${inputCls} w-56 resize-none`}
+                              onBlur={e    => save(e.target.value)}
+                              onKeyDown={e => { if (e.key === "Escape") cancel(); if (e.key === "Enter" && e.ctrlKey) save(e.target.value); }}
+                            />
+                          );
+                        } else {
+                          editEl = mkInput("text");
+                        }
+                      }
+
+                      // ── VIEW MODE ───────────────────────────────────────────
+                      let viewEl = null;
+                      if (!isEditing) {
+                        const val = rec[col.key];
+                        const empty = <span className="text-slate-300 text-xs">—</span>;
+                        if (col.key === "companyName") {
+                          viewEl = (
+                            <span className="group flex items-center gap-1 w-full">
+                              <span onClick={openEdit}
+                                className="font-medium text-slate-800 text-xs truncate max-w-44 cursor-pointer hover:text-blue-600 transition-colors">
+                                {val || "—"}
+                              </span>
+                              <button onClick={e => { e.stopPropagation(); copyCompanyName(val, rec.id); }}
+                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                                {copiedId === rec.id
+                                  ? <span className="text-green-500 text-xs">✓</span>
+                                  : <svg className="w-3 h-3 text-slate-300 hover:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                        d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                    </svg>}
+                              </button>
+                            </span>
+                          );
+                        } else if (col.key === "status") {
+                          viewEl = <span onClick={openEdit} className="cursor-pointer"><StatusBadge status={val}/></span>;
+                        } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
+                          viewEl = (
+                            <span className="flex items-center gap-1">
+                              <a href={val} target="_blank" rel="noreferrer"
+                                onClick={e => e.stopPropagation()}
+                                className="text-blue-600 hover:underline text-xs block max-w-32 truncate">{val}</a>
+                              <button onClick={openEdit} className="shrink-0 text-slate-300 hover:text-slate-500">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                                 </svg>
-                            }
-                          </button>
-                        ) : col.key === "status" ? (
-                          <StatusBadge status={rec.status} />
-                        ) : (col.key === "hpSite" || col.key === "gbpSiteUrl") && rec[col.key] ? (
-                          <a href={rec[col.key]} target="_blank" rel="noreferrer"
-                            className="text-blue-600 hover:underline text-xs block max-w-36 truncate">
-                            {rec[col.key]}
-                          </a>
-                        ) : (col.key === "lastCallDate" || col.key === "nextCallDate") ? (
-                          (() => {
-                            const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key;
-                            if (isEditing) return (
-                              <input type="date"
-                                defaultValue={normDate(rec[col.key]) || ""}
-                                autoFocus
-                                className="border border-blue-400 rounded px-1 py-0.5 text-xs w-32 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                onBlur={e   => saveInlineDate(rec.id, col.key, e.target.value)}
-                                onKeyDown={e => {
-                                  if (e.key === "Enter")  saveInlineDate(rec.id, col.key, e.target.value);
-                                  if (e.key === "Escape") setEditingCell(null);
-                                }}
-                              />
-                            );
-                            const nd = normDate(rec[col.key]);
-                            const openEdit = () => setEditingCell({ id: rec.id, key: col.key });
-                            if (!nd) return (
-                              <span onClick={openEdit}
-                                className="text-slate-300 text-xs cursor-pointer hover:text-slate-500 hover:bg-slate-50 rounded px-1 transition-colors">
-                                — 設定
-                              </span>
-                            );
-                            if (col.key === "nextCallDate") {
-                              const badge = nd < today
-                                ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} 🔴</span>
-                                : nd === today
-                                  ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⚠️</span>
-                                  : nd <= soon
-                                    ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⏰</span>
-                                    : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>;
-                              return <span onClick={openEdit} className="cursor-pointer hover:opacity-70 transition-opacity">{badge}</span>;
-                            }
-                            return (
-                              <span onClick={openEdit}
-                                className="text-slate-700 text-xs cursor-pointer hover:bg-slate-100 rounded px-1 transition-colors">
-                                {fmtDate(nd)}
-                              </span>
-                            );
-                          })()
-                        ) : col.key === "memo" ? (
-                          <span className="text-slate-600 text-xs block max-w-56 truncate" title={rec.memo||""}>
-                            {rec.memo || "—"}
-                          </span>
-                        ) : (
-                          <span className="text-slate-700 text-xs">{rec[col.key] || "—"}</span>
-                        )}
-                      </td>
-                    ))}
+                              </button>
+                            </span>
+                          );
+                        } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
+                          const nd = normDate(val);
+                          if (!nd) {
+                            viewEl = <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500 hover:bg-slate-50 rounded px-1 transition-colors">— 設定</span>;
+                          } else if (col.key === "nextCallDate") {
+                            const badge = nd < today
+                              ? <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} 🔴</span>
+                              : nd === today
+                                ? <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 text-xs font-bold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⚠️</span>
+                                : nd <= soon
+                                  ? <span className="inline-flex items-center gap-1 bg-yellow-50 text-yellow-700 text-xs font-semibold px-1.5 py-0.5 rounded">{fmtDate(nd)} ⏰</span>
+                                  : <span className="text-slate-700 text-xs">{fmtDate(nd)}</span>;
+                            viewEl = <span onClick={openEdit} className="cursor-pointer hover:opacity-70 transition-opacity">{badge}</span>;
+                          } else {
+                            viewEl = <span onClick={openEdit} className="text-slate-700 text-xs cursor-pointer hover:bg-slate-100 rounded px-1 transition-colors">{fmtDate(nd)}</span>;
+                          }
+                        } else if (col.key === "memo") {
+                          viewEl = (
+                            <span onClick={openEdit}
+                              className="text-slate-600 text-xs block max-w-56 truncate cursor-pointer hover:bg-slate-50 rounded transition-colors"
+                              title={val || ""}>
+                              {val || empty}
+                            </span>
+                          );
+                        } else {
+                          viewEl = (
+                            <span onClick={openEdit}
+                              className="text-slate-700 text-xs cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
+                              {val || empty}
+                            </span>
+                          );
+                        }
+                      }
+
+                      return (
+                        <td key={col.key} className="px-3 py-2 max-w-xs">
+                          {isEditing ? editEl : viewEl}
+                        </td>
+                      );
+                    })}
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <button onClick={() => setEditRec(rec)}
                         className="text-xs text-blue-600 hover:text-blue-800 font-medium">
