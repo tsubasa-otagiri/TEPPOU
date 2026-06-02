@@ -186,7 +186,7 @@ const ALL_COLUMNS = [
   { key:"department",    label:"部署",                                required:false },
   { key:"absenceReason", label:"不在理由",                            required:false },
   { key:"gbpManagement", label:"GBPの管理",                           required:false },
-  { key:"memo",          label:"簡易的な情報/次回架電時の情報メモ",    required:false },
+  { key:"memo",          label:"メモ",                                required:false },
   { key:"storeCount",    label:"店舗数",                              required:false },
   { key:"refusalReason", label:"断り理由",                            required:false },
   { key:"posting",       label:"投稿",                                required:false },
@@ -791,7 +791,7 @@ const CSV_TEMPLATES = {
   sales: {
     filename: "TEPPOU_営業リスト_フォーマット.csv",
     rows: [
-      ["架電日","次回架電日","状況","業種","ソース","企業名","HPサイト","GBP","電話番号","担当者","部署","不在理由","GBPの管理","簡易的な情報/次回架電時の情報メモ","店舗数","断り理由","投稿","口コミ","SNS","Insta","Line","FB","Twitter","OS","メール","メアド","GBPサイトURL"],
+      ["架電日","次回架電日","状況","業種","ソース","企業名","HPサイト","GBP","電話番号","担当者","部署","不在理由","GBPの管理","メモ","店舗数","断り理由","投稿","口コミ","SNS","Insta","Line","FB","Twitter","OS","メール","メアド","GBPサイトURL"],
       ["2026-06-01","2026-06-08","未架電","IT","自社リスト","株式会社サンプル","https://example.com","あり","03-0000-0000","山田太郎","営業部","","○","サンプルメモ","1","","○","★3","○","○","○","○","○","iOS","","sample@example.com","https://maps.google.com/..."],
     ],
   },
@@ -1430,7 +1430,7 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
             {/* メモ */}
             <SectionLabel>メモ</SectionLabel>
             <div className="col-span-2">
-              <label className="block text-xs text-slate-500 mb-1">簡易的な情報/次回架電時の情報メモ</label>
+              <label className="block text-xs text-slate-500 mb-1">メモ</label>
               <textarea value={form.memo||""} onChange={e => upd("memo", e.target.value)} rows={4}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             </div>
