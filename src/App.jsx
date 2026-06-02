@@ -921,7 +921,7 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
     if (map.companyName === undefined) {
       const detected = headers.filter(h => h.trim()).slice(0, 8).join("、");
       return {
-        error: `「企業名」列が見つかりませんでした。\n検出されたヘッダー: ${detected}\n\nヒント: 列名を「企業名」「会社名」「法人名」のいずれかにしてください。`,
+        error: `「企業名」列が見つかりませんでした。\n検出されたヘッダー: ${detected}\n\nヒント: 列名を「企業名」「会社名」「法人名」「取引先名」のいずれかにしてください。`,
         records: [],
       };
     }
@@ -2589,8 +2589,13 @@ export default function App() {
 
   const addRecords = useCallback(recs => {
     setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
-    setStatusFilterSet(new Set(Object.keys(STATUS_CFG))); // インポート後は全ステータス表示
+    // インポート後: フィルター・検索・ページをすべてリセットして確実に表示
+    setStatusFilterSet(new Set(Object.keys(STATUS_CFG)));
+    setSearch("");
+    setAssigneeFilter("all");
+    setSortKey(null);
     setPage(1);
+    setView("list");
   }, [syncToAPI]);
 
   const saveRecord = useCallback(form => {
