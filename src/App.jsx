@@ -1864,7 +1864,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   const [editCell,     setEditCell]     = useState(null);
   const [log,          setLog]          = useState(null);
   const [loading,      setLoading]      = useState(false);
-  const [overwrite,    setOverwrite]    = useState(false); // 上書きモード
   const [visibleCols,  setVisibleCols]  = useState(DEFAULT_PAST_VISIBLE);
   const [showColDrop,  setShowColDrop]  = useState(false);
   const [sortKey,      setSortKey]      = useState(null);
@@ -1984,24 +1983,10 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
+          // 重複チェックなし: すべて追加
           setPastMgmt(prev => {
-            let next, added, existed;
-            if (overwrite) {
-              // 上書きモード: 同一企業名を新データで置換し、新規は追加
-              const itemMap = new Map(items.map(i => [normName(i.companyName), i]));
-              const kept = prev.filter(r => !itemMap.has(normName(r.companyName)));
-              next = [...kept, ...items];
-              added = items.length;
-              existed = prev.length - kept.length;
-            } else {
-              // 追加モード: 重複はスキップ
-              const existingNames = new Set(prev.map(r => normName(r.companyName)));
-              const news = items.filter(i => !existingNames.has(normName(i.companyName)));
-              next = [...prev, ...news];
-              added = news.length;
-              existed = items.length - news.length;
-            }
-            setLog({ success:true, added, existed, skipped, mode: overwrite ? "overwrite" : "add" });
+            const next = [...prev, ...items];
+            setLog({ success:true, added: items.length, skipped });
             return next;
           });
           setPage(1);
@@ -2052,14 +2037,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
             </svg>
             Excelインポート
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
-          </label>
-          {/* 上書きモード */}
-          <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="checkbox" checked={overwrite} onChange={e => setOverwrite(e.target.checked)}
-              className="rounded border-slate-300 text-amber-600"/>
-            <span className={`text-xs font-medium ${overwrite ? "text-amber-700" : "text-slate-500"}`}>
-              上書きモード
-            </span>
           </label>
           {/* 列設定 */}
           <div className="relative" ref={colDropRef}>
@@ -2113,9 +2090,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
 
       {/* ログ */}
       {log && <div className={`text-xs rounded-lg px-4 py-3 ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
-        {log.error || (log.mode === "overwrite"
-          ? `✅ ${log.added.toLocaleString()}件上書き更新（既存置換: ${log.existed}件）（空行スキップ: ${log.skipped}件）`
-          : `✅ ${log.added.toLocaleString()}件追加${log.existed > 0 ? `（重複スキップ: ${log.existed}件）` : ""}（空行スキップ: ${log.skipped}件）`)}
+        {log.error || `✅ ${log.added.toLocaleString()}件追加（空行スキップ: ${log.skipped}件）`}
       </div>}
       {loading && <div className="flex items-center gap-2 text-sm text-slate-500">
         <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/> インポート処理中...
