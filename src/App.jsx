@@ -2114,7 +2114,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
               <tr>
                 {visibleDefs.map(col => (
                   <th key={col.key}
@@ -2974,7 +2974,7 @@ export default function App() {
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
                 <tr>
                   <th className="w-10 px-3 py-3 text-left">
                     <input type="checkbox"
