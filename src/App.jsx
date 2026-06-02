@@ -234,7 +234,7 @@ function mapSalesHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = h.replace(/[\s　]/g,"").toLowerCase();
-    if      (/企業名|会社名|法人名/.test(n))                      m.companyName   = i;
+    if      (/企業名|会社名|法人名|取引先名?/.test(n))                      m.companyName   = i;
     else if (/電話|tel|phone/.test(n))                            m.phone         = i;
     else if (/メアド/.test(n))                                    m.email         = i;
     else if (/^メール$/.test(n))                                  m.mailFlag      = i;
@@ -243,7 +243,7 @@ function mapSalesHeaders(headers) {
     else if (/^gbp$/.test(n))                                     m.gbp           = i;
     else if (/^hp$|hpサイト|^hp[^a-z]/.test(n))                  m.hpSite        = i;
     else if (/簡易|次回架電時の情報|メモ|備考|note|コメント/.test(n)) m.memo       = i;
-    else if (/担当者?名?|営業担当/.test(n))                       m.assignee      = i;
+    else if (/担当者?名?|営業担当|作成者/.test(n))                 m.assignee      = i;
     else if (/ステータス|状態|状況/.test(n))                      m.status        = i;
     else if (/次回架電|次架電|コールバック/.test(n))               m.nextCallDate  = i;
     else if (/最終架電|^架電日/.test(n))                          m.lastCallDate  = i;
@@ -270,7 +270,7 @@ function mapPastDealsHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = h.replace(/[\s　]/g, "").toLowerCase();
-    if (/企業名|会社名|法人名/.test(n))                   m.companyName   = i;
+    if (/企業名|会社名|法人名|取引先名?/.test(n))                   m.companyName   = i;
     else if (/過去.*状況|過去.*ステータス|状況|ステータス|状態/.test(n)) m.pastStatus  = i;
     else if (/最終架電|架電日|過去.*架電/.test(n))          m.lastCallDate  = i;
     else if (/担当者?|営業担当/.test(n))                   m.assignee      = i;
