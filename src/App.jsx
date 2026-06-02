@@ -129,6 +129,24 @@ const STATUS_CFG = {
   "9.アポ獲得":        { row:"bg-red-50",     bg:"bg-red-100",    text:"text-red-900",    border:"border-red-600",    dot:"bg-red-700"    },
 };
 
+// ── リード先（ソース）設定 ─────────────────────────────────────────────────────
+const LEAD_SOURCE_CFG = {
+  "エキテン":       { bg:"bg-rose-200",    text:"text-rose-900",    dot:"bg-rose-500"    },
+  "更地リード":     { bg:"bg-indigo-800",  text:"text-white",       dot:"bg-indigo-900"  },
+  "新規リード":     { bg:"bg-blue-200",    text:"text-blue-900",    dot:"bg-blue-500"    },
+  "過去商談(他)":   { bg:"bg-orange-100",  text:"text-orange-800",  dot:"bg-orange-400"  },
+  "過去商談(自)":   { bg:"bg-pink-100",    text:"text-pink-800",    dot:"bg-pink-400"    },
+  "過去商談(DM)":   { bg:"bg-purple-100",  text:"text-purple-700",  dot:"bg-purple-400"  },
+  "Google":         { bg:"bg-green-100",   text:"text-green-800",   dot:"bg-green-500"   },
+  "過去プル":       { bg:"bg-teal-100",    text:"text-teal-800",    dot:"bg-teal-500"    },
+  "トライハッチ":   { bg:"bg-purple-700",  text:"text-white",       dot:"bg-purple-900"  },
+  "リスト":         { bg:"bg-white",       text:"text-slate-600",   dot:"bg-slate-300"   },
+  "展示会":         { bg:"bg-slate-100",   text:"text-slate-600",   dot:"bg-slate-400"   },
+  "セミナー":       { bg:"bg-slate-100",   text:"text-slate-600",   dot:"bg-slate-400"   },
+  "名刺交換":       { bg:"bg-slate-50",    text:"text-slate-500",   dot:"bg-slate-300"   },
+  "プル":           { bg:"bg-rose-100",    text:"text-rose-700",    dot:"bg-rose-400"    },
+};
+
 const ALL_COLUMNS = [
   { key:"companyName",   label:"企業名",                              required:true  },
   { key:"lastCallDate",  label:"架電日",                              required:false },
@@ -300,6 +318,17 @@ function StatusBadge({ status }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border whitespace-nowrap ${c.bg} ${c.text} ${c.border}`}>
       {status||"—"}
+    </span>
+  );
+}
+
+// ── LeadSourceBadge ────────────────────────────────────────────────────────────
+function LeadSourceBadge({ source }) {
+  if (!source) return null;
+  const c = LEAD_SOURCE_CFG[source] ?? { bg:"bg-slate-100", text:"text-slate-600" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap border border-black/10 ${c.bg} ${c.text}`}>
+      {source}
     </span>
   );
 }
@@ -1322,7 +1351,17 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
             {txt("phone",      "電話番号")}
             {txt("department", "部署")}
             {txt("industry",   "業種")}
-            {txt("leadSource", "ソース")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">ソース</label>
+              <select value={form.leadSource||""} onChange={e => upd("leadSource", e.target.value)}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— 未選択 —</option>
+                {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {form.leadSource && (
+                <div className="mt-1.5"><LeadSourceBadge source={form.leadSource} /></div>
+              )}
+            </div>
             {txt("storeCount", "店舗数")}
 
             {/* 架電管理 */}
@@ -2464,6 +2503,17 @@ export default function App() {
                               {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           );
+                        } else if (col.key === "leadSource") {
+                          editEl = (
+                            <select autoFocus defaultValue={rec.leadSource || ""}
+                              className={`${inputCls} w-36`}
+                              onChange={e => save(e.target.value)}
+                              onBlur={cancel}
+                              onKeyDown={e => e.key === "Escape" && cancel()}>
+                              <option value="">— 未選択 —</option>
+                              {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          );
                         } else if (col.key === "lastCallDate" || col.key === "nextCallDate") {
                           // 架電日はデフォルトを「本日」、次回架電日は既存値
                           const dateDefault = col.key === "lastCallDate"
@@ -2523,6 +2573,10 @@ export default function App() {
                           );
                         } else if (col.key === "status") {
                           viewEl = <span onClick={openEdit} className="cursor-pointer"><StatusBadge status={val}/></span>;
+                        } else if (col.key === "leadSource") {
+                          viewEl = val
+                            ? <span onClick={openEdit} className="cursor-pointer hover:opacity-80 transition-opacity"><LeadSourceBadge source={val}/></span>
+                            : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
                             <span className="flex items-center gap-1">
