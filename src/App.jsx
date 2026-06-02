@@ -74,11 +74,8 @@ function IPCheckScreen() {
   );
 }
 const IDB_NAME      = "teppou_idb";
-const IDB_VER       = 2;                    // DB は v2 のまま維持（v1 に戻すと VersionError）
+const IDB_VER       = 3;                    // v3: records / past_mgmt / kv ストア
 const IDB_STORE     = "records";
-// 過去商談は別 DB で管理（バージョン競合を回避）
-const IDB_PAST_NAME = "teppou_past_idb";
-const IDB_PAST_VER  = 1;
 
 // ── IndexedDB helpers ──────────────────────────────────────────────────────────
 function idbOpen() {
@@ -86,51 +83,57 @@ function idbOpen() {
     const req = indexedDB.open(IDB_NAME, IDB_VER);
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      if (!db.objectStoreNames.contains(IDB_STORE))
-        db.createObjectStore(IDB_STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(IDB_STORE))     db.createObjectStore(IDB_STORE,   { keyPath: "id" });
+      if (!db.objectStoreNames.contains("past_mgmt"))   db.createObjectStore("past_mgmt", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("kv"))          db.createObjectStore("kv",        { keyPath: "k" });
     };
     req.onsuccess = e => res(e.target.result);
     req.onerror   = e => rej(e.target.error);
   });
 }
-async function idbGetAll() {
+async function idbGetAll(storeName = IDB_STORE) {
   const db = await idbOpen();
-  return new Promise((res, rej) => {
-    const req = db.transaction(IDB_STORE, "readonly").objectStore(IDB_STORE).getAll();
-    req.onsuccess = () => res(req.result || []);
-    req.onerror   = e => rej(e.target.error);
-  });
-}
-async function idbPutAll(records, storeName = IDB_STORE) {
-  const db = await idbOpen();
-  return new Promise((res, rej) => {
-    const tx    = db.transaction(storeName, "readwrite");
-    const store = tx.objectStore(storeName);
-    store.clear();
-    records.forEach(r => store.put(r));
-    tx.oncomplete = res;
-    tx.onerror    = e => rej(e.target.error);
-  });
-}
-// 過去商談は teppou_idb v2 の past_mgmt ストアを使用（データが既存）
-async function idbPastGetAll() {
-  const db = await idbOpen();   // teppou_idb v2 を開く
   return new Promise((res, rej) => {
     try {
-      const req = db.transaction("past_mgmt", "readonly").objectStore("past_mgmt").getAll();
+      const req = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
       req.onsuccess = () => res(req.result || []);
       req.onerror   = e => rej(e.target.error);
     } catch(e) { res([]); }
   });
 }
-async function idbPastPutAll(records) {
-  const db = await idbOpen();   // teppou_idb v2 を開く
+async function idbPutAll(records, storeName = IDB_STORE) {
+  const db = await idbOpen();
   return new Promise((res, rej) => {
     try {
-      const tx    = db.transaction("past_mgmt", "readwrite");
-      const store = tx.objectStore("past_mgmt");
+      const tx    = db.transaction(storeName, "readwrite");
+      const store = tx.objectStore(storeName);
       store.clear();
       records.forEach(r => store.put(r));
+      tx.oncomplete = res;
+      tx.onerror    = e => rej(e.target.error);
+    } catch(e) { rej(e); }
+  });
+}
+// 過去商談管理（past_mgmt ストア）
+async function idbPastGetAll() { return idbGetAll("past_mgmt"); }
+async function idbPastPutAll(records) { return idbPutAll(records, "past_mgmt"); }
+// 汎用 KV（pastDeals などの配列ブロブ用）
+async function idbKvGet(key) {
+  const db = await idbOpen();
+  return new Promise((res) => {
+    try {
+      const req = db.transaction("kv", "readonly").objectStore("kv").get(key);
+      req.onsuccess = () => res(req.result ? req.result.v : null);
+      req.onerror   = () => res(null);
+    } catch(e) { res(null); }
+  });
+}
+async function idbKvSet(key, value) {
+  const db = await idbOpen();
+  return new Promise((res, rej) => {
+    try {
+      const tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put({ k: key, v: value });
       tx.oncomplete = res;
       tx.onerror    = e => rej(e.target.error);
     } catch(e) { rej(e); }
@@ -2893,7 +2896,13 @@ export default function App() {
   useEffect(() => {
     // settings はローカルのみ
     try { const s = localStorage.getItem(SETTINGS_KEY);   if (s) setSettings(JSON.parse(s));  } catch {}
-    try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {}
+    // pastDeals: IndexedDB(kv) → なければ localStorage から移行
+    idbKvGet("pastDeals").then(d => {
+      if (Array.isArray(d) && d.length) setPastDeals(d);
+      else {
+        try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) { const p = JSON.parse(s); setPastDeals(p); idbKvSet("pastDeals", p).catch(()=>{}); localStorage.removeItem(PAST_DEALS_KEY); } } catch {}
+      }
+    }).catch(() => { try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {} });
     idbPastGetAll().then(d => {
       if (d.length > 0) { setPastMgmt(d); }
       else {
@@ -2942,7 +2951,7 @@ export default function App() {
   }, [fetchAllFromAPI]);
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
-  useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
+  useEffect(() => { idbKvSet("pastDeals", pastDeals).catch(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }); }, [pastDeals]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
   // UI 状態（列設定・ビュー・ソート）を保存
   useEffect(() => {
