@@ -72,9 +72,11 @@ function IPCheckScreen() {
   );
 }
 const IDB_NAME      = "teppou_idb";
-const IDB_VER       = 2;                    // ストア追加のためバージョンアップ
+const IDB_VER       = 1;                    // メイン records 用（変更なし）
 const IDB_STORE     = "records";
-const IDB_PAST_MGMT = "past_mgmt";
+// 過去商談は別 DB で管理（バージョン競合を回避）
+const IDB_PAST_NAME = "teppou_past_idb";
+const IDB_PAST_VER  = 1;
 
 // ── IndexedDB helpers ──────────────────────────────────────────────────────────
 function idbOpen() {
@@ -84,8 +86,6 @@ function idbOpen() {
       const db = e.target.result;
       if (!db.objectStoreNames.contains(IDB_STORE))
         db.createObjectStore(IDB_STORE, { keyPath: "id" });
-      if (!db.objectStoreNames.contains(IDB_PAST_MGMT))
-        db.createObjectStore(IDB_PAST_MGMT, { keyPath: "id" });
     };
     req.onsuccess = e => res(e.target.result);
     req.onerror   = e => rej(e.target.error);
@@ -110,12 +110,36 @@ async function idbPutAll(records, storeName = IDB_STORE) {
     tx.onerror    = e => rej(e.target.error);
   });
 }
-async function idbGetAllFrom(storeName) {
-  const db = await idbOpen();
+// 過去商談専用 DB（メイン DB とは別管理）
+function idbPastOpen() {
   return new Promise((res, rej) => {
-    const req = db.transaction(storeName, "readonly").objectStore(storeName).getAll();
+    const req = indexedDB.open(IDB_PAST_NAME, IDB_PAST_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains("past_mgmt"))
+        db.createObjectStore("past_mgmt", { keyPath: "id" });
+    };
+    req.onsuccess = e => res(e.target.result);
+    req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbPastGetAll() {
+  const db = await idbPastOpen();
+  return new Promise((res, rej) => {
+    const req = db.transaction("past_mgmt", "readonly").objectStore("past_mgmt").getAll();
     req.onsuccess = () => res(req.result || []);
     req.onerror   = e => rej(e.target.error);
+  });
+}
+async function idbPastPutAll(records) {
+  const db = await idbPastOpen();
+  return new Promise((res, rej) => {
+    const tx    = db.transaction("past_mgmt", "readwrite");
+    const store = tx.objectStore("past_mgmt");
+    store.clear();
+    records.forEach(r => store.put(r));
+    tx.oncomplete = res;
+    tx.onerror    = e => rej(e.target.error);
   });
 }
 
@@ -1967,14 +1991,14 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
-          let actualAdded = 0;
+          // 現在の pastMgmt を参照して重複チェック（updater の外で計算）
           setPastMgmt(prev => {
             const existingNames = new Set(prev.map(r => normName(r.companyName)));
             const news = items.filter(i => !existingNames.has(normName(i.companyName)));
-            actualAdded = news.length;
+            const existed = items.length - news.length;
+            setLog({ success:true, added: news.length, existed, skipped });
             return [...prev, ...news];
           });
-          setLog({ success:true, added: actualAdded, existed: items.length - actualAdded, skipped });
           setPage(1);
         } catch(ex) {
           setLog({ error: `エラー: ${ex.message}` });
@@ -2451,10 +2475,10 @@ export default function App() {
     // settings はローカルのみ
     try { const s = localStorage.getItem(SETTINGS_KEY);   if (s) setSettings(JSON.parse(s));  } catch {}
     try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {}
-    idbGetAllFrom(IDB_PAST_MGMT).then(d => {
+    idbPastGetAll().then(d => {
       if (d.length > 0) { setPastMgmt(d); }
       else {
-        try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { const p = JSON.parse(s); setPastMgmt(p); idbPutAll(p, IDB_PAST_MGMT); localStorage.removeItem(PAST_MGMT_KEY); } } catch {}
+        try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { const p = JSON.parse(s); setPastMgmt(p); idbPastPutAll(p).catch(()=>{}); localStorage.removeItem(PAST_MGMT_KEY); } } catch {}
       }
     }).catch(() => { try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {} });
 
@@ -2500,7 +2524,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }, [pastDeals]);
-  useEffect(() => { idbPutAll(pastMgmt, IDB_PAST_MGMT).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
+  useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
