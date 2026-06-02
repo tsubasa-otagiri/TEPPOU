@@ -2071,7 +2071,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
 
       {/* テーブル */}
       <div className="bg-white rounded-xl border border-slate-200">
-        <div className="overflow-x-auto">
         <table className="w-full text-xs border-collapse">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
               <tr>
@@ -2196,7 +2195,6 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
               })}
             </tbody>
           </table>
-        </div>{/* end overflow-x-auto */}
         {totalPages > 1 && (
           <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
             <span className="text-xs text-slate-400">{filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件</span>
@@ -2921,7 +2919,6 @@ export default function App() {
 
         {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-slate-200">
-          <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
                 <tr>
@@ -3140,7 +3137,6 @@ export default function App() {
                 })}
               </tbody>
             </table>
-          </div>{/* end overflow-x-auto */}
 
           {/* ── Pagination ── */}
           <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
