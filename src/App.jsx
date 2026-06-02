@@ -1187,7 +1187,8 @@ function sortGroupForDupe(rs) {
   });
 }
 
-function DuplicateModal({ records, onClean, onClose }) {
+function DuplicateModal({ records, onClean, onClose, sortFn }) {
+  const sortGroup = sortFn || sortGroupForDupe;
   const [step,      setStep]      = useState("select"); // "select" | "confirm"
   const [deleteSet, setDeleteSet] = useState(() => {
     const s = new Set();
@@ -1197,8 +1198,7 @@ function DuplicateModal({ records, onClean, onClose }) {
       (g[k] = g[k]||[]).push(r);
     });
     Object.values(g).filter(rs => rs.length > 1).forEach(rs => {
-      // 先頭（最優先）を残し、残りをデフォルト削除対象に
-      sortGroupForDupe(rs).slice(1).forEach(r => s.add(r.id));
+      sortGroup(rs).slice(1).forEach(r => s.add(r.id));
     });
     return s;
   });
@@ -1211,7 +1211,7 @@ function DuplicateModal({ records, onClean, onClose }) {
     });
     return Object.values(g)
       .filter(rs => rs.length > 1)
-      .map(rs => sortGroupForDupe(rs));
+      .map(rs => sortGroup(rs));
   })();
 
   const toggle = id => setDeleteSet(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -2311,6 +2311,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
           records={pastMgmt}
           onClean={ids => { const del = new Set(ids); setPastMgmt(p => p.filter(r => !del.has(r.id))); }}
           onClose={() => setShowDupe(false)}
+          sortFn={rs => [...rs].sort((a, b) => {
+            // 完了予定日が新しいほうを残す（先頭 = 残す）
+            const ad = normDate(a.targetDate) || "";
+            const bd = normDate(b.targetDate) || "";
+            return bd.localeCompare(ad);
+          })}
         />
       )}
     </div>
