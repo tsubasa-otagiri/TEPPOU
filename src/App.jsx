@@ -2965,8 +2965,21 @@ export default function App() {
       })
     : filtered;
 
-  const totalPages = Math.max(1, Math.ceil(sortedFiltered.length / PAGE_SIZE));
-  const paginated  = sortedFiltered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
+  // 表示順を凍結: 編集/コピーで値が変わっても並びは即時更新せず、
+  // タブ切替・フィルター/ソート/検索変更・件数増減のタイミングで再計算する
+  const [frozenIds, setFrozenIds] = useState(null);
+  useEffect(() => {
+    setFrozenIds(sortedFiltered.map(r => r.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, sortKey, sortDir, search, assigneeFilter, statusFilterSet, records.length]);
+
+  const recById = new Map(records.map(r => [r.id, r]));
+  const displayList = frozenIds
+    ? frozenIds.map(id => recById.get(id)).filter(Boolean)
+    : sortedFiltered;
+
+  const totalPages = Math.max(1, Math.ceil(displayList.length / PAGE_SIZE));
+  const paginated  = displayList.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE);
 
   const statsMap = {};
   records.forEach(r => { statsMap[r.status] = (statsMap[r.status]||0) + 1; });
@@ -3575,8 +3588,8 @@ export default function App() {
           {/* ── Pagination ── */}
           <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
             <span className="text-xs text-slate-400">
-              {sortedFiltered.length > 0
-                ? `${sortedFiltered.length}件中 ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE, sortedFiltered.length)} 件表示（全${records.length}件）`
+              {displayList.length > 0
+                ? `${displayList.length}件中 ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE, displayList.length)} 件表示（全${records.length}件）`
                 : `全${records.length}件`}
             </span>
             {totalPages > 1 && (
