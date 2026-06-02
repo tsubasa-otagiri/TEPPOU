@@ -1530,10 +1530,9 @@ function AnalysisView({ records }) {
   const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
 
   const kpis = [
-    { label:"総件数",      value: records.length,                                                                               color:"text-blue-600",   bg:"bg-blue-50"   },
-    { label:"本日架電予定", value: records.filter(r=>normDate(r.nextCallDate)===today).length,                                    color:"text-amber-600",  bg:"bg-amber-50"  },
-    { label:"3日以内期限",  value: records.filter(r=>{ const nd=normDate(r.nextCallDate); return nd>today&&nd<=soon; }).length,   color:"text-yellow-600", bg:"bg-yellow-50" },
-    { label:"商談/アポ",    value: records.filter(r=>["0.日程調整","1.高確度","4.商談中","9.アポ獲得"].includes(r.status)).length, color:"text-teal-600",   bg:"bg-teal-50"   },
+    { label:"総件数",    value: records.length,                                                         color:"text-blue-600",  bg:"bg-blue-50"  },
+    { label:"本日架電数", value: records.filter(r=>normDate(r.lastCallDate)===today).length,              color:"text-amber-600", bg:"bg-amber-50" },
+    { label:"アポ数",    value: records.filter(r=>r.status==="9.アポ獲得").length,                        color:"text-teal-600",  bg:"bg-teal-50"  },
   ];
 
   const statusMap = {};
