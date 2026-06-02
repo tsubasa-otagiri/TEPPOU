@@ -1996,7 +1996,16 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
     setEditCell(null);
     const normalized = (key === "lastCallDate" || key === "nextCallDate" || key === "targetDate" || key === "reapproachDate")
       ? normDate(val) : val;
-    setPastMgmt(prev => prev.map(r => r.id === id ? { ...r, [key]: normalized, updatedAt: nowIso() } : r));
+    setPastMgmt(prev => prev.map(r => {
+      if (r.id !== id) return r;
+      const updated = { ...r, [key]: normalized, updatedAt: nowIso() };
+      // 状況が入力されたら「未アプローチ」を「アプローチ中」に自動変更
+      if (key === "status" && normalized && normalized !== "未架電" &&
+          (updated.reapproachStatus === "未アプローチ" || !updated.reapproachStatus)) {
+        updated.reapproachStatus = "アプローチ中";
+      }
+      return updated;
+    }));
   };
 
   const stCounts = useMemo(() => {
