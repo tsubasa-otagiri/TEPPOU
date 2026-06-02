@@ -72,7 +72,7 @@ function IPCheckScreen() {
   );
 }
 const IDB_NAME      = "teppou_idb";
-const IDB_VER       = 1;                    // メイン records 用（変更なし）
+const IDB_VER       = 2;                    // DB は v2 のまま維持（v1 に戻すと VersionError）
 const IDB_STORE     = "records";
 // 過去商談は別 DB で管理（バージョン競合を回避）
 const IDB_PAST_NAME = "teppou_past_idb";
