@@ -143,6 +143,7 @@ async function idbKvSet(key, value) {
 const IS_MEMBERS = [
   "櫻井　肇","上浦　諒大","井上　妃音","太田　小百合","十文字　菜月",
   "中　翔吾","早坂　直樹","小田切　翼","横井　優一","青木　大輔",
+  "山田",
 ];
 
 const STATUS_CFG = {
