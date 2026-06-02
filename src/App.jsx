@@ -283,7 +283,7 @@ function mapPastDealsHeaders(headers) {
     const n = h.replace(/[\s　]/g, "").toLowerCase();
     if (/企業名|会社名|法人名|取引先名?/.test(n))                   m.companyName   = i;
     else if (/過去.*状況|過去.*ステータス|状況|ステータス|状態/.test(n)) m.pastStatus  = i;
-    else if (/最終架電|架電日|過去.*架電/.test(n))          m.lastCallDate  = i;
+    else if (/最終架電|架電日|過去.*架電|完了予定日/.test(n)) m.lastCallDate  = i;
     else if (/担当者?|営業担当/.test(n))                   m.assignee      = i;
     else if (/メモ|備考|note|コメント|商談メモ|経緯/.test(n)) m.memo          = i;
   });
@@ -1046,7 +1046,7 @@ function ImportModal({ onImport, onImportPastDeals, onClose }) {
         <div className="space-y-3 mb-5">
           {[
             { value:"sales", icon:"📁", title:"自分の営業リストを取り込む",
-              desc:"1行目が集計行のCSVも自動補正。企業名・電話・メモ等を自動マッピング。" },
+              desc:"企業名・取引先名・会社名を自動マッピング。作成者→担当者、完了予定日→架電日として取り込み。" },
             { value:"metel", icon:"📞", title:"ミーてるの架電ログを取り込む",
               desc:"ISメンバー10名に自動絞り込み。タグ → ステータス自動変換 & メモへ記録。" },
             { value:"past",  icon:"📜", title:"過去商談リスト（プル照合用）を取り込む",
@@ -1967,12 +1967,14 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
+          let actualAdded = 0;
           setPastMgmt(prev => {
             const existingNames = new Set(prev.map(r => normName(r.companyName)));
             const news = items.filter(i => !existingNames.has(normName(i.companyName)));
+            actualAdded = news.length;
             return [...prev, ...news];
           });
-          setLog({ success:true, added: items.length, skipped });
+          setLog({ success:true, added: actualAdded, existed: items.length - actualAdded, skipped });
           setPage(1);
         } catch(ex) {
           setLog({ error: `エラー: ${ex.message}` });
@@ -2074,7 +2076,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
 
       {/* ログ */}
       {log && <div className={`text-xs rounded-lg px-4 py-3 ${log.error ? "bg-red-50 border border-red-200 text-red-700" : "bg-green-50 border border-green-200 text-green-700"}`}>
-        {log.error || `✅ ${log.added.toLocaleString()}件追加（スキップ: ${log.skipped}件）`}
+        {log.error || `✅ ${log.added.toLocaleString()}件追加${log.existed > 0 ? `（重複スキップ: ${log.existed}件）` : ""}（空行スキップ: ${log.skipped}件）`}
       </div>}
       {loading && <div className="flex items-center gap-2 text-sm text-slate-500">
         <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/> インポート処理中...
