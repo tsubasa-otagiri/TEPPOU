@@ -1065,7 +1065,7 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       const tags     = cTags     >= 0 ? (row[cTags]    ||"").trim() : "";
       const status   = convertMitelStatus(callType, tags); // null可（情報不足時は更新しない）
       const rawDate  = cDate >= 0 ? (row[cDate]||"").trim() : "";
-      const dateStr  = rawDate ? normDate(rawDate) : getToday(); // 日時なければ本日
+      const dateStr  = rawDate ? normDate(rawDate) : "2026-05-01"; // 日時なければ5月の架電記録として設定
       const baseMemo = cMemo >= 0 ? (row[cMemo]||"").trim() : "";
       const memo     = tags ? `【MiiTelタグ】${tags}${baseMemo ? "\n"+baseMemo : ""}` : baseMemo;
       parsed.push({ company, operator, status, lastCallDate: dateStr, memo, phone: cPhone>=0?(row[cPhone]||"").trim():"" });
@@ -3080,7 +3080,7 @@ export default function App() {
             assignee: "",
             createdBy: p.operator,      // 追加者
             otherContact: "",
-            lastCallDate: p.lastCallDate || getToday(),
+            lastCallDate: p.lastCallDate || "2026-05-01",
             memo: p.memo || "",
             leadAddedDate: getToday(),
             source: "metel",
