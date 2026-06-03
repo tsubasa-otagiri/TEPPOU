@@ -2512,8 +2512,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               gbpSiteUrl:    g(salesMap.gbpSiteUrl, row),
               gbpManagement: g(salesMap.gbpManagement, row),
               status:        g(salesMap.status, row) || "未架電",
-              assignee:      "",                                   // 商談所有者は空（手動入力用）
-              createdBy:     g(salesMap.assignee ?? map.creator, row), // 作成者/担当者→追加者
+              assignee:      g(salesMap.assignee ?? map.creator, row), // 作成者/担当者→商談所有者
+              createdBy:     "",
               department:    g(salesMap.department, row),
               industry:      g(salesMap.industry, row),
               leadSource:    g(salesMap.leadSource, row),
@@ -3082,10 +3082,10 @@ export default function App() {
           try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { d = JSON.parse(s); idbPastPutAll(d).catch(()=>{}); } } catch {}
         }
         if (d && d.length > 0) {
-          // 既存データ移行: 担当者(assignee) → 追加者(createdBy)
+          // 既存データ移行: 追加者(createdBy) → 商談所有者(assignee)
           let changed = false;
           const migrated = d.map(r => {
-            if (r.assignee && !r.createdBy) { changed = true; return { ...r, createdBy: r.assignee, assignee: "" }; }
+            if (r.createdBy && !r.assignee) { changed = true; return { ...r, assignee: r.createdBy, createdBy: "" }; }
             return r;
           });
           setPastMgmt(migrated);
