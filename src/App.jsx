@@ -369,36 +369,39 @@ function parseStoreCount(v) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-// ── 店舗数の自動分析（未記入対策） ───────────────────────────────────────────────
-// 企業名をベースに、確定店舗数 → なければ推測値（仮）を返す
-// 戻り値: { value:number|null, estimated:boolean }
-function analyzeStoreCount(target, allRecords, pastDeals = []) {
-  // ① 手動入力の確定値があればそのまま
+// ── 店舗数の自動分析（未記入対策・高速インデックス方式） ─────────────────────────
+// 全レコードから「企業名→確定店舗数」「企業名→重複件数」のMapを一度だけ構築する
+function buildStoreIndex(allRecords, pastDeals = []) {
+  const storeByName = new Map(); // normName → 最大確定店舗数
+  const dupByName   = new Map(); // normName → 件数（営業リストのみ）
+  for (const r of allRecords) {
+    const n = normName(r.companyName);
+    if (!n) continue;
+    dupByName.set(n, (dupByName.get(n) || 0) + 1);
+    const sc = parseStoreCount(r.storeCount);
+    if (sc !== null) { const cur = storeByName.get(n); if (cur === undefined || sc > cur) storeByName.set(n, sc); }
+  }
+  for (const d of pastDeals) {
+    const n = normName(d.companyName);
+    if (!n) continue;
+    const sc = parseStoreCount(d.storeCount);
+    if (sc !== null) { const cur = storeByName.get(n); if (cur === undefined || sc > cur) storeByName.set(n, sc); }
+  }
+  return { storeByName, dupByName };
+}
+
+// O(1)：構築済みインデックスを使い、確定値 or 推測値（仮）を返す
+function analyzeStoreCount(target, index) {
   const own = parseStoreCount(target.storeCount);
   if (own !== null) return { value: own, estimated: false };
-
   const tn = normName(target.companyName);
-  if (!tn) return { value: null, estimated: false };
-
-  const pool = [...allRecords, ...pastDeals];
-
-  // ②-a 同一・系列社名で店舗数が入っているレコードを探す
-  let best = null;
-  for (const r of pool) {
-    if (r === target) continue;
-    const rn = normName(r.companyName);
-    if (!rn) continue;
-    const sameOrSeries = rn === tn || rn.startsWith(tn) || tn.startsWith(rn);
-    if (!sameOrSeries) continue;
-    const sc = parseStoreCount(r.storeCount);
-    if (sc !== null && (best === null || sc > best)) best = sc;
-  }
-  if (best !== null) return { value: best, estimated: true };
-
-  // ②-b 完全同名の重複件数を店舗数の推測値とする（多店舗チェーン）
-  const dupCount = allRecords.filter(r => normName(r.companyName) === tn).length;
-  if (dupCount > 1) return { value: dupCount, estimated: true };
-
+  if (!tn || !index) return { value: null, estimated: false };
+  // ① 同名の確定店舗数
+  const byName = index.storeByName.get(tn);
+  if (byName !== undefined) return { value: byName, estimated: true };
+  // ② 同名重複件数（多店舗チェーン）
+  const dup = index.dupByName.get(tn) || 0;
+  if (dup > 1) return { value: dup, estimated: true };
   return { value: null, estimated: false };
 }
 
@@ -2004,14 +2007,14 @@ function ReportView({ records, pastDeals = [] }) {
     .sort((a,b) => (b.apo+b.connect) - (a.apo+a.connect)).slice(0,5);
 
   // ── 分析③：店舗規模別セグメント ─────────────────────────────────────────────
+  const storeIdx = useMemo(() => buildStoreIndex(records, pastDeals), [records, pastDeals]);
   const sizeSegs = [
     { label:"1〜9店舗",   lo:1,   hi:9 },
     { label:"10〜99店舗", lo:10,  hi:99 },
     { label:"100店舗以上", lo:100, hi:Infinity },
   ].map(seg => {
     const rs = records.filter(r => {
-      const a = analyzeStoreCount(r, records, pastDeals); // 仮含む
-      const n = a.value || 0;
+      const n = analyzeStoreCount(r, storeIdx).value || 0;
       return n >= seg.lo && n <= seg.hi;
     });
     const apo = rs.filter(r => ["9.アポ獲得","0.日程調整"].includes(r.status)).length;
@@ -2579,6 +2582,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
   // 現在リストの企業名セット（照合用）
   const currentNames = useMemo(() =>
     new Set(records.map(r => normName(r.companyName))), [records]);
+  // 店舗数分析インデックス（過去商談＋営業リスト、一度だけ構築）
+  const storeIndex = useMemo(() => buildStoreIndex(pastMgmt, records), [pastMgmt, records]);
 
   const isInCurrent = (name) => {
     const n = normName(name);
@@ -2964,7 +2969,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                           {val||<span className="text-slate-300">—</span>}</span></td>;
                       if (col.key==="storeCount") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
-                          <StoreCountCell analysis={analyzeStoreCount(rec, pastMgmt, records)} />
+                          <StoreCountCell analysis={analyzeStoreCount(rec, storeIndex)} />
                         </span></td>;
                       return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="text-slate-700 text-xs cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
@@ -3414,6 +3419,8 @@ export default function App() {
   }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, statusFilterSet, records.length]);
 
   const recById = new Map(records.map(r => [r.id, r]));
+  // 店舗数分析インデックス（一度だけ構築）
+  const storeIndex = useMemo(() => buildStoreIndex(records, [...pastDeals, ...pastMgmt]), [records, pastDeals, pastMgmt]);
   const displayList = frozenIds
     ? frozenIds.map(id => recById.get(id)).filter(Boolean)
     : sortedFiltered;
@@ -4164,7 +4171,7 @@ export default function App() {
                             : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
                         } else if (col.key === "storeCount") {
                           viewEl = <span onClick={openEdit} className="cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
-                            <StoreCountCell analysis={analyzeStoreCount(rec, records, [...pastDeals, ...pastMgmt])} />
+                            <StoreCountCell analysis={analyzeStoreCount(rec, storeIndex)} />
                           </span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
@@ -4299,7 +4306,7 @@ export default function App() {
           onClose={() => setEditRec(null)}
           onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
           pastDeal={findPastDeal(editRec.companyName)}
-          storeEstimate={analyzeStoreCount(editRec, records, [...pastDeals, ...pastMgmt])}
+          storeEstimate={analyzeStoreCount(editRec, storeIndex)}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
