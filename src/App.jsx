@@ -2404,6 +2404,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
   const [log,          setLog]          = useState(null);
   const [loading,      setLoading]      = useState(false);
   const [notInListOnly, setNotInListOnly] = useState(false); // 現在リストにない案件のみ
+  const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電を除外
   const [addedIds,     setAddedIds]     = useState(new Set()); // 追加済み表示用
   const savedPastUI = (() => { try { return JSON.parse(localStorage.getItem(PAST_UI_KEY) || "{}"); } catch { return {}; } })();
   const [visibleCols,  setVisibleCols]  = useState(Array.isArray(savedPastUI.visibleCols) && savedPastUI.visibleCols.length ? savedPastUI.visibleCols : DEFAULT_PAST_VISIBLE);
@@ -2436,6 +2437,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
   const filtered = useMemo(() => {
     let rs = pastMgmt.filter(r => {
       if (notInListOnly && isInCurrent(r.companyName)) return false;
+      if (excludeTodayCalled && normDate(r.lastCallDate) === today) return false;
       if (search) {
         const q = search.toLowerCase();
         return ALL_PAST_COLS.some(c => String(r[c.key]||"").toLowerCase().includes(q));
@@ -2451,7 +2453,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
     }
     return rs;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pastMgmt, search, sortKey, sortDir, notInListOnly, currentNames]);
+  }, [pastMgmt, search, sortKey, sortDir, notInListOnly, excludeTodayCalled, currentNames]);
 
   const [page, setPage] = useState(1);
   const PAGE = 100;
@@ -2664,12 +2666,20 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
           </div>
           <button onClick={() => { setNotInListOnly(v=>!v); setPage(1); }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
               ${notInListOnly ? "bg-orange-600 text-white border-orange-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
             </svg>
             リスト未登録のみ{notInListOnly && ` (${filtered.length})`}
+          </button>
+          <button onClick={() => { setExcludeTodayCalled(v=>!v); setPage(1); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
+              ${excludeTodayCalled ? "bg-amber-600 text-white border-amber-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            </svg>
+            今日架電を除外
           </button>
         </div>
       </div>
@@ -2707,8 +2717,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                 </td></tr>
               ) : paginated.map(rec => {
                 const inCurrent = isInCurrent(rec.companyName);
+                const isToday   = normDate(rec.lastCallDate) === today;
+                const rowColor  = isToday
+                  ? "bg-yellow-100 border-l-4 border-yellow-400"
+                  : (STATUS_CFG[rec.status]?.row || (inCurrent ? "bg-teal-50/30" : ""));
                 return (
-                  <tr key={rec.id} className={`hover:bg-slate-50/60 transition-colors ${inCurrent?"bg-teal-50/30":""}`}>
+                  <tr key={rec.id} className={`transition-colors hover:brightness-95 ${rowColor}`}>
                     {visibleDefs.map(col => {
                       const isEd  = editCell?.id===rec.id && editCell?.key===col.key && col.key !== "companyName";
                       const open  = () => setEditCell({ id:rec.id, key:col.key });
