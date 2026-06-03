@@ -2683,7 +2683,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
       </div>}
 
       {/* テーブル */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-auto max-h-[calc(100vh-280px)]">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-auto max-h-[calc(100vh-300px)]">
         <table className="text-xs border-collapse table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
               <tr>
@@ -2832,8 +2833,9 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               })}
             </tbody>
           </table>
+        </div>{/* スクロール枠ここまで */}
         {totalPages > 1 && (
-          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap bg-white rounded-b-xl">
             <span className="text-xs text-slate-400">{filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件</span>
             <div className="flex gap-1">
               <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">«</button>
@@ -3796,7 +3798,8 @@ export default function App() {
         </div>
 
         {/* ── Table ── */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-auto max-h-[calc(100vh-260px)]">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-auto max-h-[calc(100vh-280px)]">
           <table className="text-sm border-collapse table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                 <tr>
@@ -4044,9 +4047,10 @@ export default function App() {
                 })}
               </tbody>
             </table>
+          </div>{/* スクロール枠ここまで */}
 
-          {/* ── Pagination ── */}
-          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap">
+          {/* ── Pagination（枠外固定） ── */}
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap bg-white rounded-b-xl">
             <span className="text-xs text-slate-400">
               {displayList.length > 0
                 ? `${displayList.length}件中 ${(page-1)*PAGE_SIZE+1}–${Math.min(page*PAGE_SIZE, displayList.length)} 件表示（全${records.length}件）`
