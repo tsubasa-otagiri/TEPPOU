@@ -251,7 +251,7 @@ const ALL_COLUMNS = [
   { key:"hpSite",        label:"HPサイト",                            required:false },
   { key:"gbp",           label:"GBP",                                 required:false },
   { key:"phone",         label:"電話番号",                            required:false },
-  { key:"assignee",      label:"担当者",                              required:false },
+  { key:"assignee",      label:"商談所有者",                          required:false },
   { key:"createdBy",     label:"追加者",                              required:false },
   { key:"otherContact",  label:"別担当者",                            required:false },
   { key:"importMonth",   label:"取込月",                              required:false },
@@ -2400,7 +2400,7 @@ const PAST_EXTRA_COLS = [
 const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
 const DEFAULT_PAST_VISIBLE = [
   "companyName","lastCallDate","nextCallDate","status","storeCount","phone",
-  "assignee","leadSource","memo","targetDate",
+  "createdBy","assignee","leadSource","memo","targetDate",
 ];
 
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
@@ -2512,7 +2512,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               gbpSiteUrl:    g(salesMap.gbpSiteUrl, row),
               gbpManagement: g(salesMap.gbpManagement, row),
               status:        g(salesMap.status, row) || "未架電",
-              assignee:      g(salesMap.assignee ?? map.creator, row),
+              assignee:      "",                                   // 商談所有者は空（手動入力用）
+              createdBy:     g(salesMap.assignee ?? map.creator, row), // 作成者/担当者→追加者
               department:    g(salesMap.department, row),
               industry:      g(salesMap.industry, row),
               leadSource:    g(salesMap.leadSource, row),
@@ -3080,7 +3081,16 @@ export default function App() {
           // localStorage から復旧
           try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { d = JSON.parse(s); idbPastPutAll(d).catch(()=>{}); } } catch {}
         }
-        if (d && d.length > 0) setPastMgmt(d);
+        if (d && d.length > 0) {
+          // 既存データ移行: 担当者(assignee) → 追加者(createdBy)
+          let changed = false;
+          const migrated = d.map(r => {
+            if (r.assignee && !r.createdBy) { changed = true; return { ...r, createdBy: r.assignee, assignee: "" }; }
+            return r;
+          });
+          setPastMgmt(migrated);
+          if (changed) idbPastPutAll(migrated).catch(()=>{});
+        }
       } catch {
         try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {}
       }
