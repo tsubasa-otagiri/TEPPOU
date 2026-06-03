@@ -2987,6 +2987,7 @@ export default function App() {
   const [search,         setSearch]         = useState("");
   const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
+  const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電したリストを除外
   // UI 状態をまとめて localStorage から復元
   const savedUI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } })();
   const [visibleCols,    setVisibleCols]    = useState(Array.isArray(savedUI.visibleCols) && savedUI.visibleCols.length ? savedUI.visibleCols : DEFAULT_VISIBLE_COLS);
@@ -3210,6 +3211,7 @@ export default function App() {
     // statusFilterSet が空 = フィルターなし（全表示）。一部選択時のみ絞り込む
     if (statusFilterSet.size > 0 && statusFilterSet.size < ALL_STATUS_KEYS.length && !statusFilterSet.has(r.status)) return false;
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
+    if (excludeTodayCalled && normDate(r.lastCallDate) === today) return false;
     if (search) {
       const q = search;
       if (!(r.companyName||"").includes(q) && !(r.phone||"").includes(q) &&
@@ -3241,7 +3243,7 @@ export default function App() {
   useEffect(() => {
     setFrozenIds(sortedFiltered.map(r => r.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sortKey, sortDir, search, assigneeFilter, statusFilterSet, records.length]);
+  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, statusFilterSet, records.length]);
 
   const recById = new Map(records.map(r => [r.id, r]));
   const displayList = frozenIds
@@ -3794,6 +3796,15 @@ export default function App() {
                 placeholder="企業名・電話番号・担当者・メモで検索..."
                 className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            {/* 今日架電を除外フィルター */}
+            <button onClick={() => { setExcludeTodayCalled(v => !v); setPage(1); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
+                ${excludeTodayCalled ? "bg-amber-600 text-white border-amber-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+              </svg>
+              今日架電を除外
+            </button>
           </div>
         </div>
 
