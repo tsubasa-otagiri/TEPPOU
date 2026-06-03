@@ -2685,7 +2685,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
       {/* テーブル */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
         <table className="text-xs border-collapse table-fixed">
-            <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 {visibleDefs.map(col => (
                   <th key={col.key}
@@ -3798,7 +3798,7 @@ export default function App() {
         {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
           <table className="text-sm border-collapse table-fixed">
-              <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
+              <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="w-[44px] px-3 py-3 text-left">
                     <input type="checkbox"
