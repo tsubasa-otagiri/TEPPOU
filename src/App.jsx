@@ -241,36 +241,36 @@ const ABSENCE_REASON_CFG = {
 };
 
 const ALL_COLUMNS = [
-  { key:"companyName",   label:"企業名",                              required:true  },
-  { key:"lastCallDate",  label:"架電日",                              required:false },
-  { key:"nextCallDate",  label:"次回架電日",                          required:false },
-  { key:"status",        label:"状況",                                required:false },
-  { key:"industry",      label:"業種",                                required:false },
-  { key:"leadSource",    label:"ソース",                              required:false },
-  { key:"leadAddedDate", label:"リード追加日",                        required:false },
-  { key:"hpSite",        label:"HPサイト",                            required:false },
-  { key:"gbp",           label:"GBP",                                 required:false },
-  { key:"phone",         label:"電話番号",                            required:false },
-  { key:"assignee",      label:"担当者",                              required:false },
-  { key:"createdBy",     label:"追加者",                              required:false },
-  { key:"importMonth",   label:"取込月",                              required:false },
-  { key:"department",    label:"部署",                                required:false },
-  { key:"absenceReason", label:"不在理由",                            required:false },
-  { key:"gbpManagement", label:"GBPの管理",                           required:false },
-  { key:"memo",          label:"メモ",                                required:false },
-  { key:"storeCount",    label:"店舗数",                              required:false },
-  { key:"refusalReason", label:"断り理由",                            required:false },
-  { key:"posting",       label:"投稿",                                required:false },
-  { key:"review",        label:"口コミ",                              required:false },
-  { key:"sns",           label:"SNS",                                 required:false },
-  { key:"instagram",     label:"Insta",                               required:false },
-  { key:"line",          label:"Line",                                required:false },
-  { key:"facebook",      label:"FB",                                  required:false },
-  { key:"twitter",       label:"Twitter",                             required:false },
-  { key:"os",            label:"OS",                                  required:false },
-  { key:"mailFlag",      label:"メール",                              required:false },
-  { key:"email",         label:"メアド",                              required:false },
-  { key:"gbpSiteUrl",    label:"GBPサイトURL",                        required:false },
+  { key:"companyName",   label:"企業名",                              required:true,  w:"w-[200px]" },
+  { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[108px]" },
+  { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[120px]" },
+  { key:"status",        label:"状況",                                required:false, w:"w-[130px]" },
+  { key:"industry",      label:"業種",                                required:false, w:"w-[100px]" },
+  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[110px]" },
+  { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[108px]" },
+  { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[140px]" },
+  { key:"gbp",           label:"GBP",                                 required:false, w:"w-[80px]"  },
+  { key:"phone",         label:"電話番号",                            required:false, w:"w-[120px]" },
+  { key:"assignee",      label:"担当者",                              required:false, w:"w-[100px]" },
+  { key:"createdBy",     label:"追加者",                              required:false, w:"w-[100px]" },
+  { key:"importMonth",   label:"取込月",                              required:false, w:"w-[100px]" },
+  { key:"department",    label:"部署",                                required:false, w:"w-[100px]" },
+  { key:"absenceReason", label:"不在理由",                            required:false, w:"w-[96px]"  },
+  { key:"gbpManagement", label:"GBPの管理",                           required:false, w:"w-[100px]" },
+  { key:"memo",          label:"メモ",                                required:false, w:"w-[220px]" },
+  { key:"storeCount",    label:"店舗数",                              required:false, w:"w-[88px]"  },
+  { key:"refusalReason", label:"断り理由",                            required:false, w:"w-[110px]" },
+  { key:"posting",       label:"投稿",                                required:false, w:"w-[72px]"  },
+  { key:"review",        label:"口コミ",                              required:false, w:"w-[80px]"  },
+  { key:"sns",           label:"SNS",                                 required:false, w:"w-[72px]"  },
+  { key:"instagram",     label:"Insta",                               required:false, w:"w-[72px]"  },
+  { key:"line",          label:"Line",                                required:false, w:"w-[72px]"  },
+  { key:"facebook",      label:"FB",                                  required:false, w:"w-[72px]"  },
+  { key:"twitter",       label:"Twitter",                             required:false, w:"w-[80px]"  },
+  { key:"os",            label:"OS",                                  required:false, w:"w-[72px]"  },
+  { key:"mailFlag",      label:"メール",                              required:false, w:"w-[80px]"  },
+  { key:"email",         label:"メアド",                              required:false, w:"w-[160px]" },
+  { key:"gbpSiteUrl",    label:"GBPサイトURL",                        required:false, w:"w-[160px]" },
 ];
 
 const DEFAULT_VISIBLE_COLS = [
@@ -2389,7 +2389,7 @@ function PullView({ records }) {
 
 // ── 過去商談専用追加列（ALL_COLUMNSに含まれない） ──────────────────────────────
 const PAST_EXTRA_COLS = [
-  { key:"targetDate", label:"完了予定日", required:false },
+  { key:"targetDate", label:"完了予定日", required:false, w:"w-[110px]" },
 ];
 const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
 const DEFAULT_PAST_VISIBLE = [
@@ -2683,20 +2683,20 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
       </div>}
 
       {/* テーブル */}
-      <div className="bg-white rounded-xl border border-slate-200">
-        <table className="w-full text-xs border-collapse">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        <table className="text-xs border-collapse table-fixed">
             <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
               <tr>
                 {visibleDefs.map(col => (
                   <th key={col.key}
                     onClick={() => { if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(col.key);setSortDir("asc");} setPage(1); }}
-                    className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors">
-                    <span className="inline-flex items-center gap-1">{col.label}
-                      {sortKey===col.key ? <span className="text-blue-500">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300">⇅</span>}
+                    className={`${col.w||"w-[120px]"} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors`}>
+                    <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>
+                      {sortKey===col.key ? <span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300 shrink-0">⇅</span>}
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap min-w-[72px]">現在リスト</th>
+                <th className="w-[88px] px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">現在リスト</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -3796,11 +3796,11 @@ export default function App() {
         </div>
 
         {/* ── Table ── */}
-        <div className="bg-white rounded-xl border border-slate-200">
-          <table className="w-full text-sm border-collapse">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+          <table className="text-sm border-collapse table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-14 z-10">
                 <tr>
-                  <th className="w-10 px-3 py-3 text-left">
+                  <th className="w-[44px] px-3 py-3 text-left">
                     <input type="checkbox"
                       checked={paginated.length > 0 && paginated.every(r => selected.has(r.id))}
                       onChange={e => togglePageSelect(e.target.checked)}
@@ -3813,16 +3813,16 @@ export default function App() {
                         else { setSortKey(col.key); setSortDir("asc"); }
                         setPage(1);
                       }}
-                      className="px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors">
-                      <span className="inline-flex items-center gap-1">
-                        {col.label}
+                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors`}>
+                      <span className="flex items-center gap-1">
+                        <span className="truncate">{col.label}</span>
                         {sortKey === col.key
-                          ? <span className="text-blue-500">{sortDir==="asc" ? "▲" : "▼"}</span>
-                          : <span className="text-slate-300">⇅</span>}
+                          ? <span className="text-blue-500 shrink-0">{sortDir==="asc" ? "▲" : "▼"}</span>
+                          : <span className="text-slate-300 shrink-0">⇅</span>}
                       </span>
                     </th>
                   ))}
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-slate-500">操作</th>
+                  <th className="w-[80px] px-3 py-3 text-left text-xs font-semibold text-slate-500">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -4028,12 +4028,12 @@ export default function App() {
                       }
 
                       return (
-                        <td key={col.key} className="px-3 py-2 max-w-xs">
-                          {isEditing ? editEl : viewEl}
+                        <td key={col.key} className={`${col.w||"w-[120px]"} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>
+                          <div className="truncate">{isEditing ? editEl : viewEl}</div>
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2.5 whitespace-nowrap">
+                    <td className="w-[80px] px-3 py-2.5 whitespace-nowrap align-middle">
                       <button onClick={() => setEditRec(rec)}
                         className="text-xs text-blue-600 hover:text-blue-800 font-medium">
                         編集
