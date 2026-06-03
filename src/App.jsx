@@ -759,7 +759,8 @@ function LoginScreen({ onLogin, logo }) {
 }
 
 // ── SettingsModal ──────────────────────────────────────────────────────────────
-function SettingsModal({ settings, onSave, onClose }) {
+function SettingsModal({ settings, onSave, onClose, onExportBackup, onImportBackup, onRollback, hasAutoBackup, dataCounts }) {
+  const backupFileRef = useRef();
   const [logo,         setLogo]         = useState(settings.logo    || null);
   const [favicon,      setFavicon]      = useState(settings.favicon || null);
   const [backupTimes,  setBackupTimes]  = useState((settings.backupTimes ?? ["10:00","14:00","18:00"]).join(", "));
@@ -838,6 +839,45 @@ function SettingsModal({ settings, onSave, onClose }) {
             />
             <p className="text-xs text-slate-400 mt-1">
               カンマ区切りで時刻を入力（例: 10:00, 14:00, 18:00）。アプリを開いているときに通知が表示されます。
+            </p>
+          </div>
+
+          {/* データのバックアップと復元 */}
+          <div className="mb-6 border border-slate-200 rounded-xl p-4 bg-slate-50">
+            <p className="text-sm font-semibold text-slate-700 mb-1">💾 データのバックアップと復元</p>
+            <p className="text-xs text-slate-400 mb-3">
+              営業リスト（{(dataCounts?.records??0).toLocaleString()}件）と過去商談リスト（{(dataCounts?.pastMgmt??0).toLocaleString()}件）をPCに保存・復元できます。
+            </p>
+
+            {/* PCへ保存 */}
+            <button onClick={onExportBackup}
+              className="flex items-center gap-2 w-full justify-center bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-colors mb-2">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              PCへバックアップファイルを保存
+            </button>
+
+            {/* 復元 */}
+            <label className="flex items-center gap-2 w-full justify-center bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors mb-2">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              バックアップファイルからデータを復元
+              <input ref={backupFileRef} type="file" accept=".json,application/json" className="hidden"
+                onChange={e => { if (e.target.files[0]) onImportBackup(e.target.files[0]); e.target.value=""; }} />
+            </label>
+
+            {/* 1世代ロールバック */}
+            <button onClick={onRollback} disabled={!hasAutoBackup}
+              className="flex items-center gap-2 w-full justify-center bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v6h6M3 13a9 9 0 109-9"/>
+              </svg>
+              直前のインポート前の状態に戻す（1世代ロールバック）
+            </button>
+            <p className="text-xs text-slate-400 mt-1">
+              {hasAutoBackup ? "インポート直前の状態が自動退避されています。" : "自動退避データはまだありません（CSV取込時に自動作成）。"}
             </p>
           </div>
 
@@ -2291,7 +2331,7 @@ const DEFAULT_PAST_VISIBLE = [
 ];
 
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
-function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList }) {
+function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList, onBeforeImport }) {
   const [search,       setSearch]       = useState("");
   const [editCell,     setEditCell]     = useState(null);
   const [log,          setLog]          = useState(null);
@@ -2424,6 +2464,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList 
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
+          onBeforeImport?.(); // インポート前に自動退避
           // 重複チェックなし: すべて追加
           setPastMgmt(prev => {
             const next = [...prev, ...items];
@@ -2792,6 +2833,7 @@ function HelpModal({ onClose }) {
     { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
     { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
     { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
+    { icon:"💾", title:"データのバックアップと復元", body:`⚙️設定モーダル内の「💾 データのバックアップと復元」から操作します。\n・「PCへバックアップファイルを保存」：営業リストと過去商談リストを1つのJSONファイルとしてPCに保存（ブラウザ容量を消費しません）。\n・「バックアップファイルからデータを復元」：保存したJSONを読み込んで現在のデータを上書き復元します。\n・「直前のインポート前の状態に戻す（1世代ロールバック）」：CSV取込でデータがおかしくなった時、ワンクリックで取込直前の状態に戻せます（取込のたびに自動退避）。` },
     { icon:"✏️", title:"インライン編集", body:`テーブルのセルをクリックすると直接編集できます。状況はセレクト、メモはテキストエリア、架電日は本日をデフォルトで表示します。Enterで保存、Escapeでキャンセル。` },
   ];
   return (
@@ -2855,6 +2897,7 @@ export default function App() {
   const [showImport,     setShowImport]     = useState(false);
   const [showDupe,       setShowDupe]       = useState(false);
   const [showBulkStatus, setShowBulkStatus] = useState(false);
+  const [hasAutoBackup,  setHasAutoBackup]  = useState(false);
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
@@ -3122,17 +3165,76 @@ export default function App() {
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
   // 過去商談の追加（同一企業名は上書き）
+  // ── バックアップ・復元 ──────────────────────────────────────────────────────
+  // 最新stateをrefにミラー（スナップショット用）
+  const stateRef = useRef({ records, pastDeals, pastMgmt });
+  useEffect(() => { stateRef.current = { records, pastDeals, pastMgmt }; }, [records, pastDeals, pastMgmt]);
+
+  // 初回: 自動退避の有無を確認
+  useEffect(() => { idbKvGet("sales_mgr_auto_backup").then(b => setHasAutoBackup(!!b)); }, []);
+
+  // インポート直前に1世代自動退避（IndexedDBへ。localStorage圧迫なし）
+  const snapshotForRollback = useCallback(() => {
+    const snap = { ...stateRef.current, savedAt: nowIso() };
+    idbKvSet("sales_mgr_auto_backup", snap).then(() => setHasAutoBackup(true)).catch(()=>{});
+  }, []);
+
+  // PCへバックアップファイル保存（ブラウザ容量を消費しない）
+  const exportBackup = useCallback(() => {
+    const { records:r, pastDeals:pd, pastMgmt:pm } = stateRef.current;
+    const payload = { app:"TEPPOU", version:1, exportedAt:nowIso(), records:r, pastDeals:pd, pastMgmt:pm };
+    const blob = new Blob([JSON.stringify(payload)], { type:"application/json" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href = url;
+    a.download = `teppou_backup_${getToday().replace(/-/g,"")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  // バックアップファイルから復元
+  const importBackup = useCallback((file) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        const rCnt  = Array.isArray(data.records)   ? data.records.length   : 0;
+        const pmCnt = Array.isArray(data.pastMgmt)  ? data.pastMgmt.length  : 0;
+        if (!window.confirm(`バックアップから復元します。\n\n営業リスト: ${rCnt.toLocaleString()}件\n過去商談: ${pmCnt.toLocaleString()}件\n\n現在のデータは上書きされます。よろしいですか？`)) return;
+        snapshotForRollback(); // 復元前に現状を自動退避
+        if (Array.isArray(data.records))  { setRecords(data.records);   syncToAPI(data.records); }
+        if (Array.isArray(data.pastDeals)) setPastDeals(data.pastDeals);
+        if (Array.isArray(data.pastMgmt))  setPastMgmt(data.pastMgmt);
+        window.alert("✅ 復元が完了しました。");
+      } catch (e) {
+        window.alert("❌ ファイルの読み込みに失敗しました。正しいバックアップファイルを選択してください。");
+      }
+    };
+    reader.readAsText(file, "UTF-8");
+  }, [snapshotForRollback, syncToAPI]);
+
+  // 1世代ロールバック
+  const rollbackAutoBackup = useCallback(async () => {
+    const snap = await idbKvGet("sales_mgr_auto_backup");
+    if (!snap) { window.alert("自動退避データがありません。"); return; }
+    const when = snap.savedAt ? new Date(snap.savedAt).toLocaleString("ja-JP") : "";
+    if (!window.confirm(`インポート直前の状態に戻します。\n（退避時刻: ${when}）\n\n現在のデータは破棄されます。よろしいですか？`)) return;
+    if (Array.isArray(snap.records))  { setRecords(snap.records);   syncToAPI(snap.records); }
+    if (Array.isArray(snap.pastDeals)) setPastDeals(snap.pastDeals);
+    if (Array.isArray(snap.pastMgmt))  setPastMgmt(snap.pastMgmt);
+    window.alert("✅ 直前の状態に戻しました。");
+  }, [syncToAPI]);
+
   const addPastDeals = useCallback(newDeals => {
+    snapshotForRollback(); // インポート前に自動退避
     setPastDeals(prev => {
       const map = {};
       prev.forEach(d => { map[normName(d.companyName)] = d; });
       newDeals.forEach(d => { map[normName(d.companyName)] = { ...map[normName(d.companyName)], ...d }; });
       return Object.values(map);
     });
-  }, []);
+  }, [snapshotForRollback]);
 
-  // MiiTel 架電ログのマージ取込（未登録=新規追加 / 既登録=別担当者・最新架電日更新）
-  // 過去商談からメインリストへワンクリック追加
   const addPastDealToList = useCallback((deal) => {
     setRecords(p => {
       const next = [...p, {
@@ -3154,6 +3256,7 @@ export default function App() {
   }, [syncToAPI]);
 
   const importMetelMerge = useCallback((parsed) => {
+    snapshotForRollback(); // インポート前に自動退避
     let added = 0, updated = 0;
     setRecords(prev => {
       const byName = new Map(prev.map(r => [normName(r.companyName), r]));
@@ -3205,7 +3308,7 @@ export default function App() {
     setView("list");
     setPage(1);
     return { added, updated };
-  }, [records, syncToAPI]);
+  }, [records, syncToAPI, snapshotForRollback]);
 
   // 過去商談の企業名照合ヘルパー
   const findPastDeal = useCallback((companyName) => {
@@ -3214,6 +3317,7 @@ export default function App() {
   }, [pastDeals]);
 
   const addRecords = useCallback(recs => {
+    snapshotForRollback(); // インポート前に自動退避
     setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
     // インポート後: フィルター・検索・ページをすべてリセットして確実に表示
     setStatusFilterSet(new Set(Object.keys(STATUS_CFG)));
@@ -3222,7 +3326,7 @@ export default function App() {
     setSortKey(null);
     setPage(1);
     setView("list");
-  }, [syncToAPI]);
+  }, [syncToAPI, snapshotForRollback]);
 
   const saveRecord = useCallback(form => {
     const isEdit = records.some(r => r.id === form.id);
@@ -3375,7 +3479,7 @@ export default function App() {
         {/* ── 過去商談管理 ── */}
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
           onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
-          onAddToList={addPastDealToList} />}
+          onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
@@ -3862,7 +3966,9 @@ export default function App() {
 
       {/* ── Modals ── */}
       {showSettings && (
-        <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)} />
+        <SettingsModal settings={settings} onSave={s => setSettings(s)} onClose={() => setShowSettings(false)}
+          onExportBackup={exportBackup} onImportBackup={importBackup} onRollback={rollbackAutoBackup}
+          hasAutoBackup={hasAutoBackup} dataCounts={{ records: records.length, pastMgmt: pastMgmt.length }} />
       )}
       {showImport && (
         <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onImportMetel={importMetelMerge} onClose={() => setShowImport(false)} />
