@@ -3338,15 +3338,19 @@ export default function App() {
 
   const addPastDealToList = useCallback((deal) => {
     setRecords(p => {
+      // 過去商談の状況を引き継ぐ（STATUS_CFGに存在する値のみ。なければ未架電）
+      const carriedStatus = (deal.status && STATUS_CFG[deal.status]) ? deal.status
+                          : (deal.pastStatus && STATUS_CFG[deal.pastStatus]) ? deal.pastStatus
+                          : "未架電";
       const next = [...p, {
         id: genId(),
         companyName:   deal.companyName,
         phone:         deal.phone || "",
-        status:        "未架電",
+        status:        carriedStatus,
         assignee:      deal.dealOwner || deal.assignee || deal.createdBy || "", // 自社スタッフ→担当者
         createdBy:     "",
         storeCount:    deal.storeCount || "",
-        lastCallDate:  "",
+        lastCallDate:  normDate(deal.lastCallDate) || "",
         nextCallDate:  "",
         memo:          deal.memo || "",
         leadSource:    "過去商談(他)",
