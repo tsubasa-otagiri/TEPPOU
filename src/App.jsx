@@ -363,6 +363,44 @@ function convertMitelStatus(callType, tags) {
 }
 
 function normName(s)    { return String(s||"").replace(/[\s　]/g,"").toLowerCase(); }
+// 店舗数を数値化（カンマ除去）。未記入や0は null
+function parseStoreCount(v) {
+  const n = parseInt(String(v ?? "").replace(/,/g, ""), 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// ── 店舗数の自動分析（未記入対策） ───────────────────────────────────────────────
+// 企業名をベースに、確定店舗数 → なければ推測値（仮）を返す
+// 戻り値: { value:number|null, estimated:boolean }
+function analyzeStoreCount(target, allRecords, pastDeals = []) {
+  // ① 手動入力の確定値があればそのまま
+  const own = parseStoreCount(target.storeCount);
+  if (own !== null) return { value: own, estimated: false };
+
+  const tn = normName(target.companyName);
+  if (!tn) return { value: null, estimated: false };
+
+  const pool = [...allRecords, ...pastDeals];
+
+  // ②-a 同一・系列社名で店舗数が入っているレコードを探す
+  let best = null;
+  for (const r of pool) {
+    if (r === target) continue;
+    const rn = normName(r.companyName);
+    if (!rn) continue;
+    const sameOrSeries = rn === tn || rn.startsWith(tn) || tn.startsWith(rn);
+    if (!sameOrSeries) continue;
+    const sc = parseStoreCount(r.storeCount);
+    if (sc !== null && (best === null || sc > best)) best = sc;
+  }
+  if (best !== null) return { value: best, estimated: true };
+
+  // ②-b 完全同名の重複件数を店舗数の推測値とする（多店舗チェーン）
+  const dupCount = allRecords.filter(r => normName(r.companyName) === tn).length;
+  if (dupCount > 1) return { value: dupCount, estimated: true };
+
+  return { value: null, estimated: false };
+}
 
 // ── CSV バックアップ生成 ────────────────────────────────────────────────────────
 function generateBackupCSV(records) {
@@ -439,6 +477,21 @@ function AbsenceReasonBadge({ reason }) {
       {reason}
     </span>
   );
+}
+
+// ── StoreCountCell（確定値 / 推測値「（仮）」表示） ─────────────────────────────
+function StoreCountCell({ analysis }) {
+  if (!analysis || analysis.value === null)
+    return <span className="text-slate-300 text-xs">—</span>;
+  if (analysis.estimated) {
+    return (
+      <span className="inline-flex items-baseline gap-0.5">
+        <span className="text-xs text-slate-500">{analysis.value.toLocaleString()}</span>
+        <span className="text-[10px] text-slate-400 font-medium">（仮）</span>
+      </span>
+    );
+  }
+  return <span className="text-slate-700 text-xs font-medium">{analysis.value.toLocaleString()}</span>;
 }
 
 // ── White background removal (BFS flood fill from edges) ──────────────────────
@@ -1595,7 +1648,7 @@ function DuplicateModal({ records, onClean, onClose, sortFn, renderExtra }) {
 }
 
 // ── RecordFormModal (shared by New & Edit) ─────────────────────────────────────
-function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }) {
+function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, storeEstimate }) {
   const [form, setForm] = useState({
     companyName:"", phone:"", email:"", mailFlag:"",
     hpSite:"", gbp:"", gbpSiteUrl:"", gbpManagement:"",
@@ -1654,7 +1707,18 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal }
                 <div className="mt-1.5"><LeadSourceBadge source={form.leadSource} /></div>
               )}
             </div>
-            {txt("storeCount", "店舗数")}
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">
+                店舗数
+                {storeEstimate && storeEstimate.estimated && storeEstimate.value !== null && (
+                  <span className="ml-2 text-[10px] text-slate-400 font-normal">自動分析: {storeEstimate.value.toLocaleString()}（仮）</span>
+                )}
+              </label>
+              <input type="text" value={form.storeCount||""}
+                onChange={e => upd("storeCount", e.target.value)}
+                placeholder={storeEstimate && storeEstimate.estimated && storeEstimate.value !== null ? `${storeEstimate.value}（仮・未確定）` : ""}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">リード追加日</label>
               <input type="date" value={normDate(form.leadAddedDate) || getToday()}
@@ -2699,6 +2763,10 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                       if (col.key==="memo") return <td key={col.key} className="px-3 py-2 max-w-48">
                         <span onClick={open} className="cursor-pointer text-slate-600 text-xs block max-w-44 truncate hover:bg-slate-50 rounded transition-colors" title={val||""}>
                           {val||<span className="text-slate-300">—</span>}</span></td>;
+                      if (col.key==="storeCount") return <td key={col.key} className="px-3 py-2">
+                        <span onClick={open} className="cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
+                          <StoreCountCell analysis={analyzeStoreCount(rec, pastMgmt, records)} />
+                        </span></td>;
                       return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="text-slate-700 text-xs cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
                           {val||<span className="text-slate-300">—</span>}</span></td>;
@@ -2834,6 +2902,7 @@ function HelpModal({ onClose }) {
     { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
     { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
     { icon:"💾", title:"データのバックアップと復元", body:`⚙️設定モーダル内の「💾 データのバックアップと復元」から操作します。\n・「PCへバックアップファイルを保存」：営業リストと過去商談リストを1つのJSONファイルとしてPCに保存（ブラウザ容量を消費しません）。\n・「バックアップファイルからデータを復元」：保存したJSONを読み込んで現在のデータを上書き復元します。\n・「直前のインポート前の状態に戻す（1世代ロールバック）」：CSV取込でデータがおかしくなった時、ワンクリックで取込直前の状態に戻せます（取込のたびに自動退避）。` },
+    { icon:"🏢", title:"店舗数未記入データの自動分析と（仮）表示", body:`店舗数が未記入の企業は、企業名をもとに自動で推測値を表示します。\n① 同名・系列社名で店舗数が入力済みのレコードがあれば、その数値を採用。\n② データベース内に全く同じ企業名が複数登録されている場合（多店舗チェーン等）、その重複件数を推測値とします。\n・手動入力の確定値はそのまま数値表示、自動推測値は「5（仮）」のようにグレーの「（仮）」付きで表示されます。\n・編集モーダルで正しい数値を入力して保存すると、確定値として上書きされ「（仮）」が外れます。` },
     { icon:"✏️", title:"インライン編集", body:`テーブルのセルをクリックすると直接編集できます。状況はセレクト、メモはテキストエリア、架電日は本日をデフォルトで表示します。Enterで保存、Escapeでキャンセル。` },
   ];
   return (
@@ -3863,6 +3932,10 @@ export default function App() {
                           viewEl = val
                             ? <span onClick={openEdit} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs font-semibold px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-100 transition-colors">📅 {String(val).replace("-","/")}</span>
                             : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
+                        } else if (col.key === "storeCount") {
+                          viewEl = <span onClick={openEdit} className="cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
+                            <StoreCountCell analysis={analyzeStoreCount(rec, records, pastDeals)} />
+                          </span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
                             <span className="flex items-center gap-1">
@@ -3995,6 +4068,7 @@ export default function App() {
           onClose={() => setEditRec(null)}
           onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
           pastDeal={findPastDeal(editRec.companyName)}
+          storeEstimate={analyzeStoreCount(editRec, records, pastDeals)}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
