@@ -342,11 +342,12 @@ function mapPastDealsHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = h.replace(/[\s　]/g, "").toLowerCase();
-    if (/企業名|会社名|法人名|取引先名?/.test(n))                   m.companyName   = i;
-    else if (/過去.*状況|過去.*ステータス|状況|ステータス|状態/.test(n)) m.pastStatus  = i;
-    else if (/最終架電|架電日|過去.*架電|完了予定日/.test(n)) m.lastCallDate  = i;
-    else if (/担当者?|営業担当/.test(n))                   m.assignee      = i;
-    else if (/メモ|備考|note|コメント|商談メモ|経緯/.test(n)) m.memo          = i;
+    if (/企業名|会社名|法人名|取引先名?/.test(n))                   m.companyName  = i;
+    else if (/過去.*状況|過去.*ステータス|状況|ステータス|状態|フェーズ/.test(n)) m.pastStatus = i;
+    else if (/最終架電|架電日|過去.*架電|完了予定日/.test(n))         m.lastCallDate = i;
+    // 自社側の架電スタッフ/担当者/作成者 → 商談所有者へ
+    else if (/担当者?|営業担当|作成者|オペレーター|架電者|ユーザー名/.test(n)) m.dealOwner = i;
+    else if (/メモ|備考|note|コメント|商談メモ|経緯/.test(n))         m.memo         = i;
   });
   return m;
 }
@@ -1047,7 +1048,8 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       const company = (row[map.companyName] ?? "").trim();
       if (!company) { skipped++; continue; }
       const g = k => map[k] !== undefined ? (row[map[k]] || "").trim() : "";
-      deals.push({ companyName: company, pastStatus: g("pastStatus"), lastCallDate: normDate(g("lastCallDate")), assignee: g("assignee"), memo: g("memo"), importedAt: nowIso() });
+      // 自社スタッフ名は dealOwner（商談所有者）へ。相手企業担当者は空白のまま
+      deals.push({ companyName: company, pastStatus: g("pastStatus"), lastCallDate: normDate(g("lastCallDate")), dealOwner: g("dealOwner"), memo: g("memo"), importedAt: nowIso() });
     }
     return { success:true, deals, skipped, added: deals.length };
   }
@@ -1808,10 +1810,17 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
                         <span className="font-semibold text-slate-700">{fmtDate(pastDeal.lastCallDate)}</span>
                       </div>
                     )}
-                    {pastDeal.assignee && (
+                    {/* 相手企業担当者は空白（過去CSVのスタッフ名は流し込まない） */}
+                    <div>
+                      <span className="text-slate-400 block mb-0.5">当時の相手企業担当者</span>
+                      <span className="text-slate-300">—</span>
+                    </div>
+                    {pastDeal.dealOwner && (
                       <div>
-                        <span className="text-slate-400 block mb-0.5">当時の担当者</span>
-                        <span className="font-semibold text-slate-700">{pastDeal.assignee}</span>
+                        <span className="text-slate-400 block mb-0.5">当時の自社「商談所有者」</span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded">
+                          👤 {pastDeal.dealOwner}
+                        </span>
                       </div>
                     )}
                     {pastDeal.memo && (
@@ -2896,8 +2905,7 @@ function HelpModal({ onClose }) {
   const sections = [
     { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「MiiTel架電ログ」：ISメンバー10名に自動絞り込み。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
     { icon:"📞", title:"MiiTel架電ログの最新の取り込み仕様", body:`MiiTel（ユーザー名・取引先会社名）のログを取り込むと、企業データベースを自動整理します。\n・未登録の企業 → 新規リードとして自動追加し、架電したオペレーター名を「追加者」列に記録。\n・既登録の企業 → 今回架電したオペレーター名を「別担当者」列に記録し、通話日付を「最新架電日（架電日）」に更新。\n・ISメンバー10名以外のログは自動で除外されます。\n・「追加者」「別担当者」列は列設定メニューから表示切り替えできます。` },
-    { icon:"📜", title:"過去商談リスト（プル照合）の活用方法", body:`1. CSVインポート画面の「📜 過去商談リスト（プル照合用）を取り込む」を選択してインポート。\n2. 企業名が一致すると、リスト上の企業名横に過去の状況バッジ（例：過去成約・過去断り）が自動表示されます。\n3. 編集モーダルを開くと、最下部に「過去の商談・架電履歴」エリアが表示され、当時の担当者・日付・メモを確認できます。\n4.「🔍 プル照合」タブでも企業名を貼り付けて照合できます。` },
-    { icon:"🔍", title:"プル照合タブ", body:`企業名を1行ずつ貼り付けると、現在のステータスとアクション（至急架電・近日架電・架電日未設定など）を自動判定して一覧表示します。` },
+    { icon:"📜", title:"過去商談インポート時の担当者・商談所有者マッピング", body:`「📜 過去商談リスト（プル照合用）を取り込む」で過去履歴CSVを読み込みます。\n・【重要】過去CSVの架電スタッフ名・担当者名は、相手企業の担当者欄（担当者）には流し込まず、必ず空白（—）にします。\n・自社側の架電スタッフ名は「商談所有者」として記録され、企業名が同じ場合は上書き保存されます。\n・企業名が一致すると、リスト上の企業名横に過去の状況バッジが自動表示されます。\n・編集モーダル最下部の「過去の商談・架電履歴」エリアで、当時の相手担当者は「—」、対応した自社スタッフは「当時の自社『商談所有者』」として表示されます。` },
     { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
     { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
     { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
@@ -3311,7 +3319,9 @@ export default function App() {
         companyName:   deal.companyName,
         phone:         deal.phone || "",
         status:        "未架電",
-        assignee:      deal.assignee || "",
+        assignee:      "",  // 相手企業担当者は空白
+        otherContact:  deal.dealOwner || deal.otherContact || deal.assignee || "", // 自社スタッフ→商談所有者
+        storeCount:    deal.storeCount || "",
         lastCallDate:  "",
         nextCallDate:  "",
         memo:          deal.memo || "",
