@@ -2465,7 +2465,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
   const paginated  = filtered.slice((page-1)*PAGE, page*PAGE);
 
   // 表示列定義
-  const visibleDefs = ALL_PAST_COLS.filter(c => visibleCols.includes(c.key));
+  const visibleDefs = visibleCols.map(k => ALL_PAST_COLS.find(c => c.key === k)).filter(Boolean);
 
   // カラムドロップ外側クリックで閉じる
   useEffect(() => {
@@ -2607,16 +2607,42 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               </svg>
             </button>
             {showColDrop && (
-              <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 min-w-52 max-h-80 overflow-y-auto">
-                <p className="text-xs font-semibold text-slate-400 mb-2 px-1">表示する列</p>
-                {ALL_PAST_COLS.map(col => (
-                  <label key={col.key} className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
-                    <input type="checkbox" checked={visibleCols.includes(col.key)}
-                      onChange={e => setVisibleCols(p => e.target.checked ? [...p, col.key] : p.filter(k=>k!==col.key))}
-                      className="rounded border-slate-300 text-blue-600"/>
-                    <span className="text-xs text-slate-700">{col.label}</span>
-                  </label>
-                ))}
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 w-64 max-h-96 overflow-y-auto">
+                <p className="text-xs font-semibold text-slate-400 mb-1 px-1">表示中の列（↑↓で並べ替え）</p>
+                {visibleCols.map((key, idx) => {
+                  const col = ALL_PAST_COLS.find(c => c.key === key);
+                  if (!col) return null;
+                  return (
+                    <div key={key} className="flex items-center gap-1 px-2 py-1 hover:bg-slate-50 rounded-lg">
+                      <div className="flex flex-col">
+                        <button disabled={idx===0}
+                          onClick={() => setVisibleCols(p => { const n=[...p]; [n[idx-1],n[idx]]=[n[idx],n[idx-1]]; return n; })}
+                          className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▲</button>
+                        <button disabled={idx===visibleCols.length-1}
+                          onClick={() => setVisibleCols(p => { const n=[...p]; [n[idx+1],n[idx]]=[n[idx],n[idx+1]]; return n; })}
+                          className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▼</button>
+                      </div>
+                      <span className="text-xs text-slate-700 flex-1 truncate">{col.label}</span>
+                      {col.required
+                        ? <span className="text-xs text-slate-300">必須</span>
+                        : <button onClick={() => setVisibleCols(p => p.filter(k => k!==key))}
+                            className="text-rose-400 hover:text-rose-600 text-xs">×</button>}
+                    </div>
+                  );
+                })}
+                {ALL_PAST_COLS.some(c => !visibleCols.includes(c.key)) && (
+                  <>
+                    <p className="text-xs font-semibold text-slate-400 mt-2 mb-1 px-1 border-t border-slate-100 pt-2">非表示の列（＋で追加）</p>
+                    {ALL_PAST_COLS.filter(c => !visibleCols.includes(c.key)).map(col => (
+                      <button key={col.key}
+                        onClick={() => setVisibleCols(p => [...p, col.key])}
+                        className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded-lg w-full text-left">
+                        <span className="text-blue-500 text-xs">＋</span>
+                        <span className="text-xs text-slate-500">{col.label}</span>
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -3248,7 +3274,8 @@ export default function App() {
   const doneStatuses = ["8.不要","8.当社契約"];
   const alerts   = records.filter(r => r.nextCallDate && normDate(r.nextCallDate) <= soon && !doneStatuses.includes(r.status));
   const assignees = [...new Set(records.map(r => r.assignee).filter(Boolean))];
-  const visibleDefs = ALL_COLUMNS.filter(c => visibleCols.includes(c.key));
+  // visibleCols の並び順で列を表示（未知キーは除外）
+  const visibleDefs = visibleCols.map(k => ALL_COLUMNS.find(c => c.key === k)).filter(Boolean);
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
   // 過去商談の追加（同一企業名は上書き）
@@ -3714,18 +3741,42 @@ export default function App() {
                 </svg>
               </button>
               {showColDrop && (
-                <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 min-w-44">
-                  <p className="text-xs font-semibold text-slate-400 mb-2 px-1">表示する列</p>
-                  {ALL_COLUMNS.map(col => (
-                    <label key={col.key}
-                      className="flex items-center gap-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
-                      <input type="checkbox" checked={visibleCols.includes(col.key)} disabled={col.required}
-                        onChange={e => setVisibleCols(p => e.target.checked ? [...p, col.key] : p.filter(k => k!==col.key))}
-                        className="rounded border-slate-300 text-blue-600" />
-                      <span className="text-xs text-slate-700">{col.label}</span>
-                      {col.required && <span className="ml-auto text-xs text-slate-300">必須</span>}
-                    </label>
-                  ))}
+                <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 w-64 max-h-96 overflow-y-auto">
+                  <p className="text-xs font-semibold text-slate-400 mb-1 px-1">表示中の列（↑↓で並べ替え）</p>
+                  {visibleCols.map((key, idx) => {
+                    const col = ALL_COLUMNS.find(c => c.key === key);
+                    if (!col) return null;
+                    return (
+                      <div key={key} className="flex items-center gap-1 px-2 py-1 hover:bg-slate-50 rounded-lg">
+                        <div className="flex flex-col">
+                          <button disabled={idx===0}
+                            onClick={() => setVisibleCols(p => { const n=[...p]; [n[idx-1],n[idx]]=[n[idx],n[idx-1]]; return n; })}
+                            className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▲</button>
+                          <button disabled={idx===visibleCols.length-1}
+                            onClick={() => setVisibleCols(p => { const n=[...p]; [n[idx+1],n[idx]]=[n[idx],n[idx+1]]; return n; })}
+                            className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▼</button>
+                        </div>
+                        <span className="text-xs text-slate-700 flex-1 truncate">{col.label}</span>
+                        {col.required
+                          ? <span className="text-xs text-slate-300">必須</span>
+                          : <button onClick={() => setVisibleCols(p => p.filter(k => k!==key))}
+                              className="text-rose-400 hover:text-rose-600 text-xs">×</button>}
+                      </div>
+                    );
+                  })}
+                  {ALL_COLUMNS.some(c => !visibleCols.includes(c.key)) && (
+                    <>
+                      <p className="text-xs font-semibold text-slate-400 mt-2 mb-1 px-1 border-t border-slate-100 pt-2">非表示の列（＋で追加）</p>
+                      {ALL_COLUMNS.filter(c => !visibleCols.includes(c.key)).map(col => (
+                        <button key={col.key}
+                          onClick={() => setVisibleCols(p => [...p, col.key])}
+                          className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded-lg w-full text-left">
+                          <span className="text-blue-500 text-xs">＋</span>
+                          <span className="text-xs text-slate-500">{col.label}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
             </div>
