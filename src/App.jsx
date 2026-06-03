@@ -251,8 +251,8 @@ const ALL_COLUMNS = [
   { key:"hpSite",        label:"HPサイト",                            required:false },
   { key:"gbp",           label:"GBP",                                 required:false },
   { key:"phone",         label:"電話番号",                            required:false },
-  { key:"assignee",      label:"商談所有者",                          required:false },
-  { key:"createdBy",     label:"担当者",                              required:false },
+  { key:"assignee",      label:"担当者",                              required:false },
+  { key:"createdBy",     label:"追加者",                              required:false },
   { key:"importMonth",   label:"取込月",                              required:false },
   { key:"department",    label:"部署",                                required:false },
   { key:"absenceReason", label:"不在理由",                            required:false },
@@ -1809,14 +1809,9 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
                         <span className="font-semibold text-slate-700">{fmtDate(pastDeal.lastCallDate)}</span>
                       </div>
                     )}
-                    {/* 相手企業担当者は空白（過去CSVのスタッフ名は流し込まない） */}
-                    <div>
-                      <span className="text-slate-400 block mb-0.5">当時の相手企業担当者</span>
-                      <span className="text-slate-300">—</span>
-                    </div>
                     {pastDeal.dealOwner && (
                       <div>
-                        <span className="text-slate-400 block mb-0.5">当時の自社「商談所有者」</span>
+                        <span className="text-slate-400 block mb-0.5">当時の自社「担当者」</span>
                         <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded">
                           👤 {pastDeal.dealOwner}
                         </span>
@@ -2931,7 +2926,7 @@ function HelpModal({ onClose }) {
   const sections = [
     { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「MiiTel架電ログ」：ISメンバー10名に自動絞り込み。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
     { icon:"📞", title:"MiiTel架電ログの最新の取り込み仕様", body:`MiiTel（ユーザー名・取引先会社名）のログを取り込むと、企業データベースを自動整理します。\n・未登録の企業 → 新規リードとして自動追加し、架電したオペレーター名を「追加者」列に記録。\n・既登録の企業 → 今回架電したオペレーター名を「別担当者」列に記録し、通話日付を「最新架電日（架電日）」に更新。\n・ISメンバー10名以外のログは自動で除外されます。\n・「追加者」「別担当者」列は列設定メニューから表示切り替えできます。` },
-    { icon:"📜", title:"過去商談インポート時の担当者・商談所有者マッピング", body:`「📜 過去商談リスト（プル照合用）を取り込む」で過去履歴CSVを読み込みます。\n・【重要】過去CSVの架電スタッフ名・担当者名は、相手企業の担当者欄（担当者）には流し込まず、必ず空白（—）にします。\n・自社側の架電スタッフ名は「商談所有者」として記録され、企業名が同じ場合は上書き保存されます。\n・企業名が一致すると、リスト上の企業名横に過去の状況バッジが自動表示されます。\n・編集モーダル最下部の「過去の商談・架電履歴」エリアで、当時の相手担当者は「—」、対応した自社スタッフは「当時の自社『商談所有者』」として表示されます。` },
+    { icon:"📜", title:"担当者の定義と各種取り込みマッピング", body:`【担当者】列は社内メンバー（ISスタッフ）の名前を記録します（旧「商談所有者」から名称統一。相手企業の担当者項目は廃止）。\n・MiiTel取込：既登録企業は今回の架電オペレーターを「担当者」に更新、未登録企業は新規追加して「追加者」に記録します。\n・過去商談取込：過去履歴の自社スタッフ名を「担当者」にマッピングして保存します。\n・編集モーダル最下部の「過去の商談・架電履歴」では、当時の自社スタッフを「当時の自社『担当者』」として表示します。` },
     { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
     { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
     { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
@@ -3105,16 +3100,7 @@ export default function App() {
           // localStorage から復旧
           try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { d = JSON.parse(s); idbPastPutAll(d).catch(()=>{}); } } catch {}
         }
-        if (d && d.length > 0) {
-          // 既存データ移行: 追加者(createdBy) → 商談所有者(assignee)
-          let changed = false;
-          const migrated = d.map(r => {
-            if (r.createdBy && !r.assignee) { changed = true; return { ...r, assignee: r.createdBy, createdBy: "" }; }
-            return r;
-          });
-          setPastMgmt(migrated);
-          if (changed) idbPastPutAll(migrated).catch(()=>{});
-        }
+        if (d && d.length > 0) setPastMgmt(d);
       } catch {
         try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {}
       }
@@ -3353,8 +3339,8 @@ export default function App() {
         companyName:   deal.companyName,
         phone:         deal.phone || "",
         status:        "未架電",
-        assignee:      "",
-        createdBy:     deal.dealOwner || deal.createdBy || deal.assignee || "", // 自社スタッフ→担当者
+        assignee:      deal.dealOwner || deal.assignee || deal.createdBy || "", // 自社スタッフ→担当者
+        createdBy:     "",
         storeCount:    deal.storeCount || "",
         lastCallDate:  "",
         nextCallDate:  "",
@@ -3377,23 +3363,23 @@ export default function App() {
         const key = normName(p.company);
         const existing = byName.get(key);
         if (existing) {
-          // 既登録: 担当者・取込月を更新（架電日は維持）
+          // 既登録: 担当者(assignee)・取込月を更新（架電日は維持）
           byName.set(key, {
             ...existing,
-            createdBy: p.operator,
+            assignee: p.operator,       // 担当者＝今回の架電オペレーター
             importMonth: p.importMonth || existing.importMonth,
             status: p.status || existing.status,
             updatedAt: nowIso(),
           });
         } else {
-          // 未登録: 新規リードとして追加。担当者=オペレーター
+          // 未登録: 新規リードとして追加。追加者=オペレーター
           byName.set(key, {
             id: genId(),
             companyName: p.company,
             phone: p.phone || "",
             status: p.status || "未架電",
             assignee: "",
-            createdBy: p.operator,      // 担当者
+            createdBy: p.operator,      // 追加者
             importMonth: p.importMonth || "",
             lastCallDate: "",
             memo: p.memo || "",
