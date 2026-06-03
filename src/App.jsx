@@ -2763,8 +2763,10 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                                 setCopiedId(rec.id);
                                 setTimeout(() => setCopiedId(null), 1500);
                               });
+                              // 架電日を本日に自動更新
+                              setPastMgmt(prev => prev.map(r => r.id===rec.id ? { ...r, lastCallDate: getToday(), updatedAt: nowIso() } : r));
                             }}
-                            title="クリックでコピー"
+                            title="クリックでコピー（架電日を本日に更新）"
                             className={`group flex items-center gap-1 text-left w-full transition-colors ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
                             <span className="font-medium text-xs truncate max-w-40">{val||"—"}</span>
                             {copiedId === rec.id
