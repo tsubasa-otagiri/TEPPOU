@@ -117,6 +117,27 @@ async function idbPutAll(records, storeName = IDB_STORE) {
 // 過去商談管理（past_mgmt ストア）
 async function idbPastGetAll() { return idbGetAll("past_mgmt"); }
 async function idbPastPutAll(records) { return idbPutAll(records, "past_mgmt"); }
+// 旧・分離DB（teppou_past_idb）からの復旧用
+async function idbLegacyPastGetAll() {
+  return new Promise((res) => {
+    try {
+      const req = indexedDB.open("teppou_past_idb", 1);
+      req.onupgradeneeded = e => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains("past_mgmt")) db.createObjectStore("past_mgmt", { keyPath: "id" });
+      };
+      req.onsuccess = e => {
+        const db = e.target.result;
+        try {
+          const r = db.transaction("past_mgmt", "readonly").objectStore("past_mgmt").getAll();
+          r.onsuccess = () => res(r.result || []);
+          r.onerror   = () => res([]);
+        } catch { res([]); }
+      };
+      req.onerror = () => res([]);
+    } catch { res([]); }
+  });
+}
 // 汎用 KV（pastDeals などの配列ブロブ用）
 async function idbKvGet(key) {
   const db = await idbOpen();
@@ -2902,12 +2923,24 @@ export default function App() {
         try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) { const p = JSON.parse(s); setPastDeals(p); idbKvSet("pastDeals", p).catch(()=>{}); localStorage.removeItem(PAST_DEALS_KEY); } } catch {}
       }
     }).catch(() => { try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {} });
-    idbPastGetAll().then(d => {
-      if (d.length > 0) { setPastMgmt(d); }
-      else {
-        try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { const p = JSON.parse(s); setPastMgmt(p); idbPastPutAll(p).catch(()=>{}); localStorage.removeItem(PAST_MGMT_KEY); } } catch {}
+    // 過去商談管理: 現IDB → 旧分離IDB → localStorage の順で復旧
+    (async () => {
+      try {
+        let d = await idbPastGetAll();
+        if (!d || d.length === 0) {
+          // 旧・分離DB から復旧
+          const legacy = await idbLegacyPastGetAll();
+          if (legacy && legacy.length > 0) { d = legacy; idbPastPutAll(legacy).catch(()=>{}); }
+        }
+        if (!d || d.length === 0) {
+          // localStorage から復旧
+          try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) { d = JSON.parse(s); idbPastPutAll(d).catch(()=>{}); } } catch {}
+        }
+        if (d && d.length > 0) setPastMgmt(d);
+      } catch {
+        try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {}
       }
-    }).catch(() => { try { const s = localStorage.getItem(PAST_MGMT_KEY); if (s) setPastMgmt(JSON.parse(s)); } catch {} });
+    })();
 
     if (API_BASE) {
       // API から取得 → なければローカルキャッシュ → なければ API に移行
