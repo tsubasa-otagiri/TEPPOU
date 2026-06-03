@@ -1932,7 +1932,7 @@ function generateReport(records, today, soon) {
   return { todayCalls, apo, apoRate, total, overdue: overdue.length, upcoming: upcoming.length, insights, actions, strategy, storeStats, topAssignee };
 }
 
-function ReportView({ records }) {
+function ReportView({ records, pastDeals = [] }) {
   const today = getToday();
   const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
   const report = generateReport(records, today, soon);
@@ -1968,6 +1968,55 @@ function ReportView({ records }) {
     const parts = text.split(/\*\*(.*?)\*\*/g);
     return parts.map((p, i) => i % 2 === 1 ? <strong key={i}>{p}</strong> : p);
   };
+
+  // ── 分析①：IS担当者別マトリクス ──────────────────────────────────────────────
+  const [memberSortKey, setMemberSortKey] = useState("apoRate");
+  const recOwner = (r) => `${r.assignee||""} ${r.createdBy||""}`; // 担当者+追加者で照合
+  const memberStats = IS_MEMBERS.map(m => {
+    const mn = normName(m);
+    const rs = records.filter(r => {
+      const on = normName(recOwner(r));
+      return on.includes(mn) || mn.includes(normName(r.assignee||"")) && r.assignee;
+    });
+    const cnt = (...st) => rs.filter(r => st.includes(r.status)).length;
+    const apo     = cnt("9.アポ獲得","0.日程調整");
+    const connect = cnt("6.コネクト（改）","7.コネクト（無）");
+    const refused = cnt("4.受付カット");
+    const absent  = rs.filter(r => ["不在","不通","2.優先","3.並"].includes(r.status)).length;
+    const apoRate = connect > 0 ? (apo/connect*100) : 0;
+    return { name:m, total:rs.length, apo, connect, refused, absent, apoRate };
+  }).filter(s => s.total > 0)
+    .sort((a,b) => memberSortKey==="apoRate" ? b.apoRate-a.apoRate
+                 : memberSortKey==="apo"     ? b.apo-a.apo
+                 : b.total-a.total);
+
+  // ── 分析③：業種別 成果ランキング（トップ5） ─────────────────────────────────
+  const indMap = {};
+  records.forEach(r => {
+    if (!r.industry) return;
+    const k = r.industry;
+    indMap[k] = indMap[k] || { industry:k, total:0, apo:0, connect:0 };
+    indMap[k].total++;
+    if (["9.アポ獲得","0.日程調整"].includes(r.status)) indMap[k].apo++;
+    if (["6.コネクト（改）","7.コネクト（無）"].includes(r.status)) indMap[k].connect++;
+  });
+  const industryRank = Object.values(indMap)
+    .sort((a,b) => (b.apo+b.connect) - (a.apo+a.connect)).slice(0,5);
+
+  // ── 分析③：店舗規模別セグメント ─────────────────────────────────────────────
+  const sizeSegs = [
+    { label:"1〜9店舗",   lo:1,   hi:9 },
+    { label:"10〜99店舗", lo:10,  hi:99 },
+    { label:"100店舗以上", lo:100, hi:Infinity },
+  ].map(seg => {
+    const rs = records.filter(r => {
+      const a = analyzeStoreCount(r, records, pastDeals); // 仮含む
+      const n = a.value || 0;
+      return n >= seg.lo && n <= seg.hi;
+    });
+    const apo = rs.filter(r => ["9.アポ獲得","0.日程調整"].includes(r.status)).length;
+    return { ...seg, total:rs.length, apo, rate: rs.length ? (apo/rs.length*100) : 0 };
+  });
 
   return (
     <div className="space-y-4">
@@ -2017,17 +2066,120 @@ function ReportView({ records }) {
         </Section>
       )}
 
-      {/* ステータス分布 */}
-      <Section title="📊 ステータス別件数">
+      {/* 分析①：IS担当者別マトリクス */}
+      <Section title="👥 IS担当者別 活動・成果マトリクス">
+        <div className="flex gap-1.5 mb-3">
+          {[["apoRate","アポ獲得率順"],["apo","アポ数順"],["total","件数順"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setMemberSortKey(k)}
+              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${memberSortKey===k ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+                <th className="pb-2 font-semibold">担当者</th>
+                <th className="pb-2 font-semibold text-right">総件数</th>
+                <th className="pb-2 font-semibold text-right">アポ</th>
+                <th className="pb-2 font-semibold text-right">コネクト</th>
+                <th className="pb-2 font-semibold text-right">受付断り</th>
+                <th className="pb-2 font-semibold text-right">不在/不通</th>
+                <th className="pb-2 font-semibold text-right">アポ獲得率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {memberStats.length === 0 ? (
+                <tr><td colSpan={7} className="py-6 text-center text-slate-400">担当者データがありません</td></tr>
+              ) : memberStats.map(s => (
+                <tr key={s.name} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-2 text-slate-700 font-medium whitespace-nowrap">{s.name}</td>
+                  <td className="py-2 text-right text-slate-600">{s.total.toLocaleString()}</td>
+                  <td className="py-2 text-right font-bold text-red-700">{s.apo}</td>
+                  <td className="py-2 text-right text-blue-700">{s.connect}</td>
+                  <td className="py-2 text-right text-amber-700">{s.refused}</td>
+                  <td className="py-2 text-right text-slate-500">{s.absent}</td>
+                  <td className={`py-2 text-right font-bold ${s.apoRate>=20?"text-teal-600":s.apoRate>=10?"text-blue-600":"text-slate-500"}`}>
+                    {s.apoRate.toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] text-slate-400 mt-2">※ アポ獲得率 = アポ獲得商談数 ÷ 担当コネクト数（分母0は0%）</p>
+      </Section>
+
+      {/* 分析②：ステータス別パイプライン */}
+      <Section title="📊 ステータス別パイプライン（ファネル）">
         <div className="space-y-2">
           {statusData.map(d => (
             <div key={d.status} className="flex items-center gap-2">
               <span className="text-xs text-slate-600 w-32 shrink-0 truncate">{d.status}</span>
-              <Bar count={d.count} max={maxSt} colorClass={d.cfg?.dot??"bg-slate-400"} />
+              <div className="flex-1 bg-slate-200 rounded-full h-4 overflow-hidden">
+                <div className={`h-full rounded-full ${d.cfg?.dot??"bg-slate-400"}`} style={{width:`${Math.max(2,d.count/maxSt*100)}%`}} />
+              </div>
               <span className="text-xs font-bold text-slate-700 w-14 text-right shrink-0">{d.count.toLocaleString()}</span>
               <span className="text-xs text-slate-400 w-9 text-right shrink-0">{Math.round(d.count/records.length*100)}%</span>
             </div>
           ))}
+        </div>
+      </Section>
+
+      {/* 分析③：業種別 成果ランキング */}
+      {industryRank.length > 0 && (
+        <Section title="🏭 業種別 成果ランキング（トップ5）">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+                  <th className="pb-2 font-semibold">業種</th>
+                  <th className="pb-2 font-semibold text-right">件数</th>
+                  <th className="pb-2 font-semibold text-right">アポ</th>
+                  <th className="pb-2 font-semibold text-right">コネクト</th>
+                </tr>
+              </thead>
+              <tbody>
+                {industryRank.map((d,i) => (
+                  <tr key={d.industry} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-2 text-slate-700 font-medium">{i+1}. {d.industry}</td>
+                    <td className="py-2 text-right text-slate-600">{d.total.toLocaleString()}</td>
+                    <td className="py-2 text-right font-bold text-red-700">{d.apo}</td>
+                    <td className="py-2 text-right text-blue-700">{d.connect}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
+
+      {/* 分析③：店舗規模別セグメント */}
+      <Section title="🏬 店舗規模別セグメント（仮含む）">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+                <th className="pb-2 font-semibold">規模</th>
+                <th className="pb-2 font-semibold text-right">アプローチ</th>
+                <th className="pb-2 font-semibold text-right">アポ獲得</th>
+                <th className="pb-2 font-semibold text-right">率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sizeSegs.map(d => (
+                <tr key={d.label} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-2 text-slate-700 font-medium">{d.label}</td>
+                  <td className="py-2 text-right text-slate-600">{d.total.toLocaleString()}</td>
+                  <td className="py-2 text-right font-bold text-red-700">{d.apo}</td>
+                  <td className={`py-2 text-right font-semibold ${d.rate>=8?"text-teal-600":d.rate>=4?"text-blue-600":"text-slate-500"}`}>
+                    {d.rate.toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Section>
 
@@ -2945,7 +3097,7 @@ function HelpModal({ onClose }) {
     { icon:"📥", title:"CSVインポート", body:`・「自分の営業リスト」：企業名・電話・状況などを自動マッピング。Excel(.xlsx)にも対応。\n・「MiiTel架電ログ」：ISメンバー10名に自動絞り込み。\n・「過去商談リスト」：過去の商談データをインポートし、現在のリストと自動照合します。` },
     { icon:"📞", title:"MiiTel架電ログの最新の取り込み仕様", body:`MiiTel（ユーザー名・取引先会社名）のログを取り込むと、企業データベースを自動整理します。\n・未登録の企業 → 新規リードとして自動追加し、架電したオペレーター名を「追加者」列に記録。\n・既登録の企業 → 今回架電したオペレーター名を「別担当者」列に記録し、通話日付を「最新架電日（架電日）」に更新。\n・ISメンバー10名以外のログは自動で除外されます。\n・「追加者」「別担当者」列は列設定メニューから表示切り替えできます。` },
     { icon:"📜", title:"担当者の定義と各種取り込みマッピング", body:`【担当者】列は社内メンバー（ISスタッフ）の名前を記録します（旧「商談所有者」から名称統一。相手企業の担当者項目は廃止）。\n・MiiTel取込：既登録企業は今回の架電オペレーターを「担当者」に更新、未登録企業は新規追加して「追加者」に記録します。\n・過去商談取込：過去履歴の自社スタッフ名を「担当者」にマッピングして保存します。\n・編集モーダル最下部の「過去の商談・架電履歴」では、当時の自社スタッフを「当時の自社『担当者』」として表示します。` },
-    { icon:"📊", title:"分析タブ", body:`ステータス別件数・担当者割合・業種別・店舗数別アポ率などをグラフ/テーブルで確認できます。` },
+    { icon:"📊", title:"レポート分析画面の集計定義", body:`「📊 レポート」タブで活動成果を可視化します。\n・IS担当者別マトリクス：担当者ごとの総件数・アポ・コネクト・受付断り・不在/不通を集計。アポ獲得率＝アポ獲得商談数÷担当コネクト数（分母0は0%）。獲得率/アポ数/件数で並べ替え可能。\n・ステータス別パイプライン：全データの状況別件数と割合を横棒グラフで表示し、リードの滞留箇所を可視化。\n・業種別ランキング：アポ＋コネクト数の多い業種トップ5を自動抽出。\n・店舗規模別：1〜9 / 10〜99 / 100店舗以上（仮分析含む）の規模別にアプローチ件数とアポ獲得率を集計。` },
     { icon:"🔄", title:"重複クレンジング", body:`同一企業名のレコードをグループ化し、削除対象をチェックボックスで選択して一括削除できます。ステータス優先度順にソートされ、未架電・並が削除候補に自動選択されます。` },
     { icon:"⚙️", title:"設定（ロゴ・ファビコン・バックアップ）", body:`・ロゴ・ファビコン：PNG/JPEG をアップロードすると白背景を自動透過し、トリミングできます。\n・自動バックアップ：指定時刻になると通知バナーが表示され、CSV をダウンロードできます。` },
     { icon:"💾", title:"データのバックアップと復元", body:`⚙️設定モーダル内の「💾 データのバックアップと復元」から操作します。\n・「PCへバックアップファイルを保存」：営業リストと過去商談リストを1つのJSONファイルとしてPCに保存（ブラウザ容量を消費しません）。\n・「バックアップファイルからデータを復元」：保存したJSONを読み込んで現在のデータを上書き復元します。\n・「直前のインポート前の状態に戻す（1世代ロールバック）」：CSV取込でデータがおかしくなった時、ワンクリックで取込直前の状態に戻せます（取込のたびに自動退避）。` },
@@ -3596,7 +3748,7 @@ export default function App() {
         </div>
 
         {/* ── Analysis view ── */}
-        {view==="analysis" && <ReportView records={records} />}
+        {view==="analysis" && <ReportView records={records} pastDeals={pastDeals} />}
 
         {/* ── 過去商談管理 ── */}
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
