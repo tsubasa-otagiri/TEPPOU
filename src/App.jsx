@@ -2291,11 +2291,13 @@ const DEFAULT_PAST_VISIBLE = [
 ];
 
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
-function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
+function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList }) {
   const [search,       setSearch]       = useState("");
   const [editCell,     setEditCell]     = useState(null);
   const [log,          setLog]          = useState(null);
   const [loading,      setLoading]      = useState(false);
+  const [notInListOnly, setNotInListOnly] = useState(false); // 現在リストにない案件のみ
+  const [addedIds,     setAddedIds]     = useState(new Set()); // 追加済み表示用
   const savedPastUI = (() => { try { return JSON.parse(localStorage.getItem(PAST_UI_KEY) || "{}"); } catch { return {}; } })();
   const [visibleCols,  setVisibleCols]  = useState(Array.isArray(savedPastUI.visibleCols) && savedPastUI.visibleCols.length ? savedPastUI.visibleCols : DEFAULT_PAST_VISIBLE);
   const [showColDrop,  setShowColDrop]  = useState(false);
@@ -2326,7 +2328,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
   // フィルタ・ソート
   const filtered = useMemo(() => {
     let rs = pastMgmt.filter(r => {
-
+      if (notInListOnly && isInCurrent(r.companyName)) return false;
       if (search) {
         const q = search.toLowerCase();
         return ALL_PAST_COLS.some(c => String(r[c.key]||"").toLowerCase().includes(q));
@@ -2341,7 +2343,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
       });
     }
     return rs;
-  }, [pastMgmt, search, sortKey, sortDir]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pastMgmt, search, sortKey, sortDir, notInListOnly, currentNames]);
 
   const [page, setPage] = useState(1);
   const PAGE = 100;
@@ -2515,14 +2518,24 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
           )}
           <span className="text-xs text-slate-400 ml-auto">{pastMgmt.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
         </div>
-        {/* 検索 */}
-        <div className="relative">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-          </svg>
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder="企業名・担当者・メモなどで検索..."
-            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        {/* 検索・フィルター */}
+        <div className="flex flex-wrap gap-2">
+          <div className="relative flex-1 min-w-48">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="企業名・担当者・メモなどで検索..."
+              className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+          </div>
+          <button onClick={() => { setNotInListOnly(v=>!v); setPage(1); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors
+              ${notInListOnly ? "bg-orange-600 text-white border-orange-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
+            </svg>
+            リスト未登録のみ{notInListOnly && ` (${filtered.length})`}
+          </button>
         </div>
       </div>
 
@@ -2662,7 +2675,18 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList }) {
                             className="text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap">
                             ✓ 表示
                           </button>
-                        : <span className="text-slate-300 text-xs">—</span>}
+                        : addedIds.has(rec.id)
+                        ? <span className="text-green-600 text-xs font-semibold whitespace-nowrap">✓ 追加済</span>
+                        : <button onClick={() => {
+                            onAddToList?.(rec);
+                            setAddedIds(p => { const s = new Set(p); s.add(rec.id); return s; });
+                          }}
+                            className="flex items-center gap-1 text-blue-700 bg-blue-50 border border-blue-300 hover:bg-blue-100 px-1.5 py-0.5 rounded text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
+                            </svg>
+                            追加
+                          </button>}
                     </td>
                   </tr>
                 );
@@ -3108,6 +3132,27 @@ export default function App() {
   }, []);
 
   // MiiTel 架電ログのマージ取込（未登録=新規追加 / 既登録=別担当者・最新架電日更新）
+  // 過去商談からメインリストへワンクリック追加
+  const addPastDealToList = useCallback((deal) => {
+    setRecords(p => {
+      const next = [...p, {
+        id: genId(),
+        companyName:   deal.companyName,
+        phone:         deal.phone || "",
+        status:        "未架電",
+        assignee:      deal.assignee || "",
+        lastCallDate:  "",
+        nextCallDate:  "",
+        memo:          deal.memo || "",
+        leadSource:    "過去商談(他)",
+        leadAddedDate: getToday(),
+        importedAt: nowIso(), updatedAt: nowIso(), source:"past-add",
+      }];
+      syncToAPI(next);
+      return next;
+    });
+  }, [syncToAPI]);
+
   const importMetelMerge = useCallback((parsed) => {
     let added = 0, updated = 0;
     setRecords(prev => {
@@ -3329,7 +3374,8 @@ export default function App() {
 
         {/* ── 過去商談管理 ── */}
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
-          onGoToList={name => { setView("list"); setSearch(name); setPage(1); }} />}
+          onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
+          onAddToList={addPastDealToList} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
