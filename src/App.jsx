@@ -3944,7 +3944,7 @@ export default function App() {
                             : <span onClick={openEdit} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>;
                         } else if (col.key === "storeCount") {
                           viewEl = <span onClick={openEdit} className="cursor-pointer hover:bg-slate-50 rounded px-0.5 transition-colors">
-                            <StoreCountCell analysis={analyzeStoreCount(rec, records, pastDeals)} />
+                            <StoreCountCell analysis={analyzeStoreCount(rec, records, [...pastDeals, ...pastMgmt])} />
                           </span>;
                         } else if ((col.key === "hpSite" || col.key === "gbpSiteUrl") && val) {
                           viewEl = (
@@ -4078,7 +4078,7 @@ export default function App() {
           onClose={() => setEditRec(null)}
           onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
           pastDeal={findPastDeal(editRec.companyName)}
-          storeEstimate={analyzeStoreCount(editRec, records, pastDeals)}
+          storeEstimate={analyzeStoreCount(editRec, records, [...pastDeals, ...pastMgmt])}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
