@@ -3349,7 +3349,7 @@ export default function App() {
         companyName:   deal.companyName,
         phone:         deal.phone || "",
         status:        carriedStatus,
-        assignee:      deal.dealOwner || deal.assignee || deal.createdBy || "", // 自社スタッフ→担当者
+        assignee:      "",   // 担当者は引き継がない
         createdBy:     "",
         storeCount:    deal.storeCount || "",
         lastCallDate:  normDate(deal.lastCallDate) || "",
