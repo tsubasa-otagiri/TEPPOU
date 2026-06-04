@@ -1355,9 +1355,17 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
 }
 
 // ── StatusBulkUpdateModal ──────────────────────────────────────────────────────
+// フェーズ（Excel）→ 状況（TEPPOU）変換。null=更新しない
+function phaseToStatus(phase) {
+  const p = String(phase || "").trim();
+  if (/^0?[1-5]\./.test(p)) return "4.商談中";     // 01〜05 → 商談中
+  if (/^0?6\./.test(p))      return "8.当社契約";   // 06 → 当社契約
+  return null;                                       // 受注後取消など → 更新しない
+}
+
 function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
   const [targetStatus, setTargetStatus] = useState("8.当社契約");
-  const [matches, setMatches]           = useState(null); // { names:[], matched:[] }
+  const [matches, setMatches]           = useState(null); // { names, matched, plan, phaseMode }
   const [log, setLog]                   = useState(null);
   const [loading, setLoading]           = useState(false);
   const fileRef = useRef();
@@ -1367,21 +1375,42 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
     if (!file) return;
     setLoading(true); setLog(null); setMatches(null);
     const readRows = (rows) => {
-      // 企業名列を検出
       const headers = rows[0] || [];
-      const nameIdx = headers.findIndex(h => /取引先名?|企業名|会社名|法人名/.test(String(h).replace(/[\s　]/g,"")));
-      const idx = nameIdx >= 0 ? nameIdx : 1; // デフォルト2列目
-      const names = [...new Set(
-        rows.slice(1).map(r => String(r[idx]??'').trim()).filter(n=>n)
-      )];
-      // 現在のリストと照合
-      const matched = records.filter(r =>
-        names.some(n => {
-          const nn = normName(n), rn = normName(r.companyName);
-          return nn === rn || nn.includes(rn) || rn.includes(nn);
-        })
-      );
-      setMatches({ names, matched });
+      const norm = h => String(h).replace(/[\s　]/g,"");
+      const nameIdx  = headers.findIndex(h => /取引先名?|企業名|会社名|法人名/.test(norm(h)));
+      const phaseIdx = headers.findIndex(h => /フェーズ|phase|状況|ステータス/.test(norm(h)));
+      const nIdx = nameIdx >= 0 ? nameIdx : 1;
+      const phaseMode = phaseIdx >= 0;
+
+      // 企業名→フェーズ のマップ（フェーズ列がある場合）
+      const phaseByName = new Map();
+      const names = [];
+      rows.slice(1).forEach(r => {
+        const nm = String(r[nIdx]??"").trim();
+        if (!nm) return;
+        names.push(nm);
+        if (phaseMode) phaseByName.set(normName(nm), String(r[phaseIdx]??"").trim());
+      });
+      const uniqNames = [...new Set(names)];
+
+      // リスト内の一致企業を抽出し、フェーズ→新ステータスを計算
+      const plan = []; // { record, newStatus }
+      records.forEach(rec => {
+        const rn = normName(rec.companyName);
+        const hit = uniqNames.find(n => { const nn = normName(n); return nn === rn || nn.includes(rn) || rn.includes(nn); });
+        if (!hit) return;
+        let newStatus;
+        if (phaseMode) {
+          const ph = phaseByName.get(normName(hit));
+          newStatus = phaseToStatus(ph);
+          if (!newStatus) return; // 受注後取消など → 対象外
+        } else {
+          newStatus = targetStatus;
+        }
+        plan.push({ record: rec, newStatus });
+      });
+
+      setMatches({ uniqCount: uniqNames.length, plan, phaseMode });
       setLoading(false);
     };
     const ext = file.name.split(".").pop().toLowerCase();
@@ -1402,10 +1431,11 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
   };
 
   const apply = () => {
-    if (!matches?.matched.length) return;
-    const ids = new Set(matches.matched.map(r => r.id));
-    onUpdate(ids, targetStatus);
-    setLog({ updated: matches.matched.length, status: targetStatus });
+    if (!matches?.plan.length) return;
+    // id → 新ステータス のMap
+    const map = new Map(matches.plan.map(p => [p.record.id, p.newStatus]));
+    onUpdate(map);
+    setLog({ updated: map.size });
   };
 
   return (
@@ -1416,9 +1446,8 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
         </div>
 
-        {/* ファイル選択 */}
         <div className="mb-4">
-          <p className="text-xs text-slate-500 mb-2">企業名が含まれる Excel / CSV をアップロードすると、リスト内の一致企業のステータスを一括変更します。</p>
+          <p className="text-xs text-slate-500 mb-2">企業名＋フェーズ列のあるExcel/CSVなら、フェーズに応じて状況を自動変換して一括更新します（フェーズ列がなければ下で選んだ状況に統一）。</p>
           <label className="flex items-center gap-2 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer w-fit transition-colors">
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
@@ -1426,49 +1455,52 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
             ファイルを選択
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
           </label>
+          <p className="text-[10px] text-slate-400 mt-2">フェーズ変換: 01〜05.◯◯ → 4.商談中 ／ 06.決裁完了・契約合意 → 8.当社契約 ／ 受注後取消 → 対象外</p>
         </div>
 
         {loading && <p className="text-xs text-slate-500 mb-4 flex items-center gap-2"><span className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin inline-block"/>照合中...</p>}
 
-        {/* 照合結果 */}
         {matches && !log && (
           <>
-            <div className={`rounded-xl px-4 py-3 mb-4 text-sm ${matches.matched.length>0?"bg-teal-50 border border-teal-200 text-teal-800":"bg-slate-50 border border-slate-200 text-slate-500"}`}>
-              ファイル内 <strong>{matches.names.length}</strong> 社 → リスト内 <strong>{matches.matched.length}</strong> 社がマッチしました
-              {matches.matched.length === 0 && <span className="text-xs ml-2">（企業名が一致しませんでした）</span>}
+            <div className={`rounded-xl px-4 py-3 mb-4 text-sm ${matches.plan.length>0?"bg-teal-50 border border-teal-200 text-teal-800":"bg-slate-50 border border-slate-200 text-slate-500"}`}>
+              ファイル内 <strong>{matches.uniqCount}</strong> 社 → 更新対象 <strong>{matches.plan.length}</strong> 社
+              {matches.phaseMode && <span className="text-xs ml-1">（フェーズ自動変換モード）</span>}
+              {matches.plan.length === 0 && <span className="text-xs ml-2">（一致または変換対象なし）</span>}
             </div>
 
-            {matches.matched.length > 0 && (
+            {matches.plan.length > 0 && (
               <>
-                {/* マッチ企業プレビュー */}
-                <div className="max-h-32 overflow-y-auto mb-4 border border-slate-200 rounded-xl">
+                <div className="max-h-40 overflow-y-auto mb-4 border border-slate-200 rounded-xl">
                   <table className="w-full text-xs">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
                         <th className="px-3 py-1.5 text-left text-slate-500">企業名</th>
-                        <th className="px-3 py-1.5 text-left text-slate-500">現在のステータス</th>
+                        <th className="px-3 py-1.5 text-left text-slate-500">現在</th>
+                        <th className="px-3 py-1.5 text-left text-slate-500">→ 変更後</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {matches.matched.slice(0,10).map(r => (
+                      {matches.plan.slice(0,12).map(({record:r, newStatus}) => (
                         <tr key={r.id}>
-                          <td className="px-3 py-1.5 text-slate-700">{r.companyName}</td>
+                          <td className="px-3 py-1.5 text-slate-700 truncate max-w-[140px]">{r.companyName}</td>
                           <td className="px-3 py-1.5"><StatusBadge status={r.status}/></td>
+                          <td className="px-3 py-1.5"><StatusBadge status={newStatus}/></td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {matches.matched.length > 10 && <p className="text-xs text-slate-400 text-center py-1">他 {matches.matched.length-10} 社…</p>}
+                  {matches.plan.length > 12 && <p className="text-xs text-slate-400 text-center py-1">他 {matches.plan.length-12} 社…</p>}
                 </div>
 
-                {/* 変更後ステータス */}
-                <div className="mb-4">
-                  <label className="block text-xs text-slate-500 mb-1">変更後のステータス</label>
-                  <select value={targetStatus} onChange={e=>setTargetStatus(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+                {!matches.phaseMode && (
+                  <div className="mb-4">
+                    <label className="block text-xs text-slate-500 mb-1">変更後のステータス（フェーズ列なし時）</label>
+                    <select value={targetStatus} onChange={e=>setTargetStatus(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                )}
               </>
             )}
           </>
@@ -1476,7 +1508,7 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
 
         {log && (
           <div className="bg-green-50 border border-green-200 text-green-800 rounded-xl px-4 py-3 mb-4 text-sm">
-            ✅ <strong>{log.updated}社</strong>のステータスを「{log.status}」に更新しました
+            ✅ <strong>{log.updated}社</strong>のステータスを更新しました
           </div>
         )}
 
@@ -1484,10 +1516,10 @@ function StatusBulkUpdateModal({ records, onUpdate, onClose }) {
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50">
             {log ? "閉じる" : "キャンセル"}
           </button>
-          {!log && matches?.matched.length > 0 && (
+          {!log && matches?.plan.length > 0 && (
             <button onClick={apply}
               className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold rounded-lg transition-colors">
-              {matches.matched.length}社を「{targetStatus}」に更新
+              {matches.plan.length}社を更新
             </button>
           )}
         </div>
@@ -3654,9 +3686,15 @@ export default function App() {
     });
   }, [syncToAPI]);
 
-  const bulkUpdateStatus = useCallback((ids, status) => {
+  // statusMap: Map(id → 新ステータス)。または (Set(ids), status) の旧形式も許容
+  const bulkUpdateStatus = useCallback((statusMap, statusArg) => {
     setRecords(p => {
-      const next = p.map(r => ids.has(r.id) ? { ...r, status, updatedAt: nowIso() } : r);
+      const next = p.map(r => {
+        if (statusMap instanceof Map) {
+          return statusMap.has(r.id) ? { ...r, status: statusMap.get(r.id), updatedAt: nowIso() } : r;
+        }
+        return statusMap.has(r.id) ? { ...r, status: statusArg, updatedAt: nowIso() } : r;
+      });
       syncToAPI(next);
       return next;
     });
