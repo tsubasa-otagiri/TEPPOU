@@ -182,6 +182,7 @@ const STATUS_CFG = {
   "8.不要":            { row:"bg-purple-50",  bg:"bg-purple-100", text:"text-purple-900", border:"border-purple-600", dot:"bg-purple-800" },
   "8.当社契約":        { row:"bg-gray-100",   bg:"bg-gray-200",   text:"text-gray-800",   border:"border-gray-500",   dot:"bg-gray-700"   },
   "9.アポ獲得":        { row:"bg-red-50",     bg:"bg-red-100",    text:"text-red-900",    border:"border-red-600",    dot:"bg-red-700"    },
+  "10.リードなし":     { row:"bg-stone-100",  bg:"bg-stone-200",  text:"text-stone-600",  border:"border-stone-400",  dot:"bg-stone-500"  },
 };
 
 // ── 再アプローチステータス ─────────────────────────────────────────────────────
@@ -1535,7 +1536,7 @@ const DUPE_PRIORITY = {
   "5.メール送付":5, "6.コネクト（改）":6, "7.コネクト（無）":7,
   "2.優先":8, "4.別担当架電":9, "4.受付カット":10,
   "8.当社契約":11, "8.不要":12, "3.並":13,
-  "未架電":99, "":100,
+  "10.リードなし":98, "未架電":99, "":100,
 };
 const dupePrio = s => DUPE_PRIORITY[s] ?? 50;
 
