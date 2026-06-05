@@ -2585,6 +2585,288 @@ const DEFAULT_PAST_VISIBLE = [
   "createdBy","assignee","leadSource","memo","targetDate",
 ];
 
+// ── エンタープライズ管理（大手）列定義 ──────────────────────────────────────────
+const ENT_COLS = [
+  { key:"companyName",   label:"企業・ブランド名",   w:"w-[200px]" },
+  { key:"status",        label:"状況",               w:"w-[120px]" },
+  { key:"internalOwner", label:"社内担当者",         w:"w-[100px]" },
+  { key:"state",         label:"状態",               w:"w-[100px]" },
+  { key:"corpName",      label:"法人名",             w:"w-[200px]" },
+  { key:"industry",      label:"業種",               w:"w-[110px]" },
+  { key:"storeCount",    label:"店舗数",             w:"w-[90px]"  },
+  { key:"personName",    label:"氏名",               w:"w-[110px]" },
+  { key:"dealName",      label:"商談名",             w:"w-[140px]" },
+  { key:"gmoPhase",      label:"GMO営業フェーズ",    w:"w-[200px]" },
+  { key:"lastUpdate",    label:"最終更新日",         w:"w-[110px]" },
+  { key:"tryhatchStatus",label:"トライハッチ営業状況", w:"w-[160px]" },
+  { key:"memo",          label:"メモ",               w:"w-[220px]" },
+];
+const ENT_DEFAULT_VISIBLE = ["companyName","status","internalOwner","state","industry","storeCount","dealName","gmoPhase","lastUpdate"];
+
+// 大手シートのヘッダー→キー マッピング
+function mapEntHeaders(headers) {
+  const m = {};
+  headers.forEach((h, i) => {
+    const n = String(h).replace(/[\s　]/g,"");
+    if (/企業・ブランド名|企業名|ブランド名/.test(n))      m.companyName  = i;
+    else if (/^状況$/.test(n))                            m.status       = i;
+    else if (/社内担当者/.test(n))                        m.internalOwner= i;
+    else if (/^状態$/.test(n))                            m.state        = i;
+    else if (/法人名/.test(n))                            m.corpName     = i;
+    else if (/業種/.test(n))                              m.industry     = i;
+    else if (/店舗数/.test(n))                            m.storeCount   = i;
+    else if (/氏名/.test(n))                              m.personName   = i;
+    else if (/商談名/.test(n))                            m.dealName     = i;
+    else if (/GMO営業フェーズ|営業フェーズ|フェーズ/.test(n)) m.gmoPhase  = i;
+    else if (/最終更新日|更新日/.test(n))                 m.lastUpdate   = i;
+    else if (/トライハッチ/.test(n))                      m.tryhatchStatus = i;
+    else if (/担当者/.test(n) && m.contactName===undefined) m.contactName = i;
+  });
+  return m;
+}
+
+// ── EnterpriseView ─────────────────────────────────────────────────────────────
+function EnterpriseView({ enterprise, setEnterprise }) {
+  const savedUI = (() => { try { return JSON.parse(localStorage.getItem("teppou_ent_ui_v1") || "{}"); } catch { return {}; } })();
+  const [search,      setSearch]      = useState("");
+  const [stFilter,    setStFilter]    = useState("all");
+  const [editCell,    setEditCell]    = useState(null);
+  const [visibleCols, setVisibleCols] = useState(Array.isArray(savedUI.visibleCols)&&savedUI.visibleCols.length ? savedUI.visibleCols : ENT_DEFAULT_VISIBLE);
+  const [showColDrop, setShowColDrop] = useState(false);
+  const [sortKey,     setSortKey]     = useState(savedUI.sortKey ?? null);
+  const [sortDir,     setSortDir]     = useState(savedUI.sortDir || "asc");
+  const [log,         setLog]         = useState(null);
+  const [loading,     setLoading]     = useState(false);
+  const [page,        setPage]        = useState(1);
+  const colDropRef = useRef();
+  const fileRef    = useRef();
+  const PAGE = 100;
+
+  useEffect(() => { try { localStorage.setItem("teppou_ent_ui_v1", JSON.stringify({ visibleCols, sortKey, sortDir })); } catch {} }, [visibleCols, sortKey, sortDir]);
+  useEffect(() => {
+    if (!showColDrop) return;
+    const fn = e => { if (colDropRef.current && !colDropRef.current.contains(e.target)) setShowColDrop(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [showColDrop]);
+
+  const visibleDefs = visibleCols.map(k => ENT_COLS.find(c => c.key===k)).filter(Boolean);
+
+  // ステータス集計
+  const stCounts = useMemo(() => {
+    const m = {};
+    enterprise.forEach(r => { const s = r.status||"未設定"; m[s]=(m[s]||0)+1; });
+    return m;
+  }, [enterprise]);
+
+  const filtered = useMemo(() => {
+    let rs = enterprise.filter(r => {
+      if (stFilter !== "all" && (r.status||"未設定") !== stFilter) return false;
+      if (search) { const q=search.toLowerCase(); return ENT_COLS.some(c => String(r[c.key]||"").toLowerCase().includes(q)); }
+      return true;
+    });
+    if (sortKey) rs = [...rs].sort((a,b) => {
+      const va=String(a[sortKey]||""), vb=String(b[sortKey]||"");
+      const cmp = va.localeCompare(vb,"ja"); return sortDir==="asc"?cmp:-cmp;
+    });
+    return rs;
+  }, [enterprise, search, stFilter, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length/PAGE));
+  const paginated  = filtered.slice((page-1)*PAGE, page*PAGE);
+
+  // インポート
+  const handleFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true); setLog(null);
+    const reader = new FileReader();
+    reader.onload = ev => {
+      setTimeout(() => {
+        try {
+          const wb = XLSX.read(ev.target.result, { type:"array", cellDates:true });
+          // 「大手」シート優先、なければ先頭
+          const sheetName = wb.SheetNames.find(n => /大手/.test(n)) || wb.SheetNames[0];
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:"" })
+            .map(r => r.map(c => c instanceof Date ? c.toISOString().slice(0,10) : String(c??"").trim()));
+          const map = mapEntHeaders(rows[0]||[]);
+          if (map.companyName === undefined) { setLog({ error:`「企業・ブランド名」列が見つかりません（シート: ${sheetName}）` }); setLoading(false); return; }
+          const g = (k,row) => map[k]!==undefined ? String(row[map[k]]??"").trim() : "";
+          const items = [];
+          for (const row of rows.slice(1)) {
+            if (row.every(c => !String(c).trim())) continue;
+            const name = g("companyName",row);
+            if (!name) continue;
+            const rawDate = map.lastUpdate!==undefined ? row[map.lastUpdate] : "";
+            const lu = /^\d{4}-\d{2}-\d{2}/.test(String(rawDate)) ? String(rawDate).slice(0,10) : (rawDate ? normDate(String(rawDate)) : "");
+            items.push({
+              id: genId(),
+              companyName: name, status: g("status",row), internalOwner: g("internalOwner",row),
+              state: g("state",row), corpName: g("corpName",row), industry: g("industry",row),
+              storeCount: g("storeCount",row), personName: g("personName",row), dealName: g("dealName",row),
+              gmoPhase: g("gmoPhase",row), lastUpdate: lu, tryhatchStatus: g("tryhatchStatus",row),
+              memo: "", importedAt: nowIso(), updatedAt: nowIso(),
+            });
+          }
+          setEnterprise(items); // 全置換（最新シートで上書き）
+          setLog({ success:true, added: items.length, sheet: sheetName });
+          setPage(1);
+        } catch(ex) { setLog({ error:`読み込みエラー: ${ex.message}` }); }
+        finally { setLoading(false); }
+      }, 60);
+    };
+    reader.readAsArrayBuffer(file);
+    e.target.value = "";
+  };
+
+  const saveCell = (id, key, val) => {
+    setEditCell(null);
+    setEnterprise(prev => prev.map(r => r.id===id ? { ...r, [key]: val, updatedAt: nowIso() } : r));
+  };
+
+  const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
+
+  return (
+    <div className="space-y-4">
+      {/* ツールバー */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            Excelインポート（大手シート）
+            <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFile} disabled={loading}/>
+          </label>
+          {/* 列設定 */}
+          <div className="relative" ref={colDropRef}>
+            <button onClick={() => setShowColDrop(v=>!v)}
+              className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M14 3v18"/></svg>
+              列設定
+            </button>
+            {showColDrop && (
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 w-64 max-h-96 overflow-y-auto">
+                <p className="text-xs font-semibold text-slate-400 mb-1 px-1">表示中の列（↑↓で並べ替え）</p>
+                {visibleCols.map((key, idx) => {
+                  const col = ENT_COLS.find(c=>c.key===key); if (!col) return null;
+                  return (
+                    <div key={key} className="flex items-center gap-1 px-2 py-1 hover:bg-slate-50 rounded-lg">
+                      <div className="flex flex-col">
+                        <button disabled={idx===0} onClick={()=>setVisibleCols(p=>{const n=[...p];[n[idx-1],n[idx]]=[n[idx],n[idx-1]];return n;})} className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▲</button>
+                        <button disabled={idx===visibleCols.length-1} onClick={()=>setVisibleCols(p=>{const n=[...p];[n[idx+1],n[idx]]=[n[idx],n[idx+1]];return n;})} className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▼</button>
+                      </div>
+                      <span className="text-xs text-slate-700 flex-1 truncate">{col.label}</span>
+                      {key!=="companyName" && <button onClick={()=>setVisibleCols(p=>p.filter(k=>k!==key))} className="text-rose-400 hover:text-rose-600 text-xs">×</button>}
+                    </div>
+                  );
+                })}
+                {ENT_COLS.some(c=>!visibleCols.includes(c.key)) && (<>
+                  <p className="text-xs font-semibold text-slate-400 mt-2 mb-1 px-1 border-t border-slate-100 pt-2">非表示の列（＋で追加）</p>
+                  {ENT_COLS.filter(c=>!visibleCols.includes(c.key)).map(col => (
+                    <button key={col.key} onClick={()=>setVisibleCols(p=>[...p,col.key])} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded-lg w-full text-left">
+                      <span className="text-blue-500 text-xs">＋</span><span className="text-xs text-slate-500">{col.label}</span>
+                    </button>
+                  ))}
+                </>)}
+              </div>
+            )}
+          </div>
+          <span className="text-xs text-slate-400 ml-auto">{enterprise.length.toLocaleString()}件 / 表示: {filtered.length.toLocaleString()}件</span>
+        </div>
+        {/* ステータスフィルター */}
+        {Object.keys(stCounts).length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={()=>{setStFilter("all");setPage(1);}} className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter==="all"?"bg-blue-600 text-white border-blue-600":"border-slate-200 text-slate-500 hover:bg-slate-50"}`}>全表示</button>
+            {Object.entries(stCounts).sort((a,b)=>b[1]-a[1]).map(([s,c])=>(
+              <button key={s} onClick={()=>{setStFilter(stFilter===s?"all":s);setPage(1);}}
+                className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${stFilter===s?"bg-slate-700 text-white border-slate-700":"bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-50"}`}>
+                {s} {c}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* 検索 */}
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="企業名・法人名・業種・商談名などで検索..."
+            className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        </div>
+      </div>
+
+      {log && <div className={`text-xs rounded-lg px-4 py-3 ${log.error?"bg-red-50 border border-red-200 text-red-700":"bg-green-50 border border-green-200 text-green-700"}`}>
+        {log.error || `✅ ${log.added.toLocaleString()}件を取り込みました（シート: ${log.sheet}）`}
+      </div>}
+      {loading && <div className="flex items-center gap-2 text-sm text-slate-500"><span className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"/>インポート処理中...</div>}
+
+      {/* テーブル */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-auto max-h-[calc(100vh-300px)]">
+          <table className="text-xs border-collapse table-fixed">
+            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <tr>
+                {visibleDefs.map(col => (
+                  <th key={col.key} onClick={()=>{ if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else {setSortKey(col.key);setSortDir("asc");} setPage(1); }}
+                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none bg-slate-50`}>
+                    <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>
+                      {sortKey===col.key ? <span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300 shrink-0">⇅</span>}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginated.length === 0 ? (
+                <tr><td colSpan={visibleDefs.length} className="text-center py-14 text-slate-400 text-sm">
+                  {enterprise.length===0 ? "「大手」シートを含むExcelをインポートしてください。" : "条件に一致するデータがありません。"}
+                </td></tr>
+              ) : paginated.map(rec => (
+                <tr key={rec.id} className="hover:bg-slate-50/60 transition-colors">
+                  {visibleDefs.map(col => {
+                    const isEd = editCell?.id===rec.id && editCell?.key===col.key && col.key!=="companyName";
+                    const open = () => col.key!=="companyName" && setEditCell({ id:rec.id, key:col.key });
+                    const val = rec[col.key];
+                    if (isEd) {
+                      if (col.key==="memo") return <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden`}>
+                        <textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`}
+                          onBlur={e=>saveCell(rec.id,col.key,e.target.value)} onKeyDown={e=>{if(e.key==="Escape")setEditCell(null);if(e.key==="Enter"&&e.ctrlKey)saveCell(rec.id,col.key,e.target.value);}}/></td>;
+                      return <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden`}>
+                        <input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`}
+                          onBlur={e=>saveCell(rec.id,col.key,e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveCell(rec.id,col.key,e.target.value);if(e.key==="Escape")setEditCell(null);}}/></td>;
+                    }
+                    return (
+                      <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>
+                        <div onClick={open} className={`truncate ${col.key==="companyName"?"font-medium text-slate-800":"text-slate-600 cursor-pointer hover:bg-slate-50 rounded"}`} title={String(val||"")}>
+                          {col.key==="storeCount" && val ? Number(String(val).replace(/,/g,"")).toLocaleString()
+                           : col.key==="lastUpdate" ? (val ? fmtDate(normDate(String(val))) : <span className="text-slate-300">—</span>)
+                           : (val || <span className="text-slate-300">—</span>)}
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {totalPages > 1 && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap bg-white rounded-b-xl">
+            <span className="text-xs text-slate-400">{filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件</span>
+            <div className="flex gap-1">
+              <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">«</button>
+              <button onClick={()=>setPage(p=>p-1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">‹</button>
+              <span className="px-3 py-1 text-xs text-slate-600">{page} / {totalPages}</span>
+              <button onClick={()=>setPage(p=>p+1)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">›</button>
+              <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">»</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── PastMgmtView ───────────────────────────────────────────────────────────────
 function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList, onBeforeImport }) {
   const [search,       setSearch]       = useState("");
@@ -3141,6 +3423,7 @@ function HelpModal({ onClose }) {
     { icon:"💾", title:"データのバックアップと復元", body:`⚙️設定モーダル内の「💾 データのバックアップと復元」から操作します。\n・「PCへバックアップファイルを保存」：営業リストと過去商談リストを1つのJSONファイルとしてPCに保存（ブラウザ容量を消費しません）。\n・「バックアップファイルからデータを復元」：保存したJSONを読み込んで現在のデータを上書き復元します。\n・「直前のインポート前の状態に戻す（1世代ロールバック）」：CSV取込でデータがおかしくなった時、ワンクリックで取込直前の状態に戻せます（取込のたびに自動退避）。` },
     { icon:"🏢", title:"店舗数未記入データの自動分析と（仮）表示", body:`店舗数が未記入の企業は、企業名をもとに自動で推測値を表示します。\n① 同名・系列社名で店舗数が入力済みのレコードがあれば、その数値を採用。\n② データベース内に全く同じ企業名が複数登録されている場合（多店舗チェーン等）、その重複件数を推測値とします。\n・手動入力の確定値はそのまま数値表示、自動推測値は「5（仮）」のようにグレーの「（仮）」付きで表示されます。\n・編集モーダルで正しい数値を入力して保存すると、確定値として上書きされ「（仮）」が外れます。` },
     { icon:"✏️", title:"インライン編集", body:`テーブルのセルをクリックすると直接編集できます。状況はセレクト、メモはテキストエリア、架電日は本日をデフォルトで表示します。Enterで保存、Escapeでキャンセル。` },
+    { icon:"🏢", title:"エンタープライズ管理タブ", body:`大手・多店舗企業の商談を管理する専用タブです。\n・「Excelインポート（大手シート）」で、大手シート（状況・社内担当者・企業ブランド名・法人名・業種・店舗数・商談名・GMO営業フェーズ・最終更新日など）を取り込みます（インポートで全置換）。\n・通常リストと同様に、列設定（表示/並べ替え）・ソート・検索・状況フィルター・セルのインライン編集に対応。\n・データは営業リストとは独立して保存されます。` },
   ];
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3188,6 +3471,7 @@ export default function App() {
   const [records,        setRecords]        = useState([]);
   const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談プル照合用
   const [pastMgmt,       setPastMgmt]       = useState([]);   // 過去商談管理（再アプローチ）
+  const [enterprise,     setEnterprise]     = useState([]);   // エンタープライズ管理（大手）
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [showHelp,       setShowHelp]       = useState(false);
   const [search,         setSearch]         = useState("");
@@ -3207,7 +3491,7 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
-  const [view,           setView]           = useState(["list","analysis","pastmgmt"].includes(savedUI.view) ? savedUI.view : "list");
+  const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise"].includes(savedUI.view) ? savedUI.view : "list");
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
@@ -3296,6 +3580,8 @@ export default function App() {
         try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) { const p = JSON.parse(s); setPastDeals(p); idbKvSet("pastDeals", p).catch(()=>{}); localStorage.removeItem(PAST_DEALS_KEY); } } catch {}
       }
     }).catch(() => { try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {} });
+    // エンタープライズ管理（大手）
+    idbKvGet("enterprise").then(d => { if (Array.isArray(d) && d.length) setEnterprise(d); }).catch(()=>{});
     // 過去商談管理: 現IDB → 旧分離IDB → localStorage の順で復旧
     (async () => {
       try {
@@ -3357,6 +3643,7 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { idbKvSet("pastDeals", pastDeals).catch(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }); }, [pastDeals]);
+  useEffect(() => { idbKvSet("enterprise", enterprise).catch(()=>{}); }, [enterprise]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
   // UI 状態（列設定・ビュー・ソート）を保存
   useEffect(() => {
@@ -3784,7 +4071,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンタープライズ"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -3800,6 +4087,9 @@ export default function App() {
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
           onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
           onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
+
+        {/* ── エンタープライズ管理 ── */}
+        {view==="enterprise" && <EnterpriseView enterprise={enterprise} setEnterprise={setEnterprise} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
