@@ -4071,7 +4071,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンタープライズ"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンプラ"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
