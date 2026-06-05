@@ -2585,23 +2585,29 @@ const DEFAULT_PAST_VISIBLE = [
   "createdBy","assignee","leadSource","memo","targetDate",
 ];
 
-// ── エンタープライズ管理（大手）列定義 ──────────────────────────────────────────
-const ENT_COLS = [
-  { key:"companyName",   label:"企業・ブランド名",   w:"w-[200px]" },
-  { key:"status",        label:"状況",               w:"w-[120px]" },
+// ── エンタープライズ管理：列はメインリストと同一＋大手専用列 ───────────────────────
+const ENT_EXTRA_COLS = [
   { key:"internalOwner", label:"社内担当者",         w:"w-[100px]" },
-  { key:"state",         label:"状態",               w:"w-[100px]" },
   { key:"corpName",      label:"法人名",             w:"w-[200px]" },
-  { key:"industry",      label:"業種",               w:"w-[110px]" },
-  { key:"storeCount",    label:"店舗数",             w:"w-[90px]"  },
-  { key:"personName",    label:"氏名",               w:"w-[110px]" },
   { key:"dealName",      label:"商談名",             w:"w-[140px]" },
   { key:"gmoPhase",      label:"GMO営業フェーズ",    w:"w-[200px]" },
-  { key:"lastUpdate",    label:"最終更新日",         w:"w-[110px]" },
   { key:"tryhatchStatus",label:"トライハッチ営業状況", w:"w-[160px]" },
-  { key:"memo",          label:"メモ",               w:"w-[220px]" },
 ];
-const ENT_DEFAULT_VISIBLE = ["companyName","status","internalOwner","state","industry","storeCount","dealName","gmoPhase","lastUpdate"];
+const ENT_COLS = [...ALL_COLUMNS, ...ENT_EXTRA_COLS];
+const ENT_DEFAULT_VISIBLE = [
+  "companyName","lastCallDate","nextCallDate","status","internalOwner",
+  "industry","storeCount","phone","gmoPhase","memo",
+];
+
+// 大手「状況」→ TEPPOU状況へのマッピング
+function entStatusMap(s) {
+  const v = String(s||"").trim();
+  if (/契約|受注/.test(v))     return "8.当社契約";
+  if (/商談/.test(v))          return "4.商談中";
+  if (/アプローチ/.test(v))    return "2.優先";
+  if (/失注|断り|不要/.test(v)) return "8.不要";
+  return v && STATUS_CFG[v] ? v : "未架電";
+}
 
 // 大手シートのヘッダー→キー マッピング
 function mapEntHeaders(headers) {
@@ -2651,6 +2657,8 @@ function EnterpriseView({ enterprise, setEnterprise }) {
   }, [showColDrop]);
 
   const visibleDefs = visibleCols.map(k => ENT_COLS.find(c => c.key===k)).filter(Boolean);
+  const today = getToday();
+  const storeIndex = useMemo(() => buildStoreIndex(enterprise, []), [enterprise]);
 
   // ステータス集計
   const stCounts = useMemo(() => {
@@ -2700,13 +2708,29 @@ function EnterpriseView({ enterprise, setEnterprise }) {
             if (!name) continue;
             const rawDate = map.lastUpdate!==undefined ? row[map.lastUpdate] : "";
             const lu = /^\d{4}-\d{2}-\d{2}/.test(String(rawDate)) ? String(rawDate).slice(0,10) : (rawDate ? normDate(String(rawDate)) : "");
+            const memoParts = [];
+            if (g("personName",row))     memoParts.push(`氏名:${g("personName",row)}`);
+            if (g("state",row))          memoParts.push(`状態:${g("state",row)}`);
             items.push({
               id: genId(),
-              companyName: name, status: g("status",row), internalOwner: g("internalOwner",row),
-              state: g("state",row), corpName: g("corpName",row), industry: g("industry",row),
-              storeCount: g("storeCount",row), personName: g("personName",row), dealName: g("dealName",row),
-              gmoPhase: g("gmoPhase",row), lastUpdate: lu, tryhatchStatus: g("tryhatchStatus",row),
-              memo: "", importedAt: nowIso(), updatedAt: nowIso(),
+              // メインリストと同じ標準フィールド
+              companyName:  name,
+              status:       entStatusMap(g("status",row)),
+              assignee:     "",
+              industry:     g("industry",row),
+              storeCount:   g("storeCount",row),
+              phone:        "",
+              lastCallDate: lu,        // 最終更新日→架電日
+              nextCallDate: "",
+              memo:         memoParts.join(" / "),
+              leadAddedDate: getToday(),
+              // 大手専用フィールド
+              internalOwner: g("internalOwner",row),
+              corpName:      g("corpName",row),
+              dealName:      g("dealName",row),
+              gmoPhase:      g("gmoPhase",row),
+              tryhatchStatus:g("tryhatchStatus",row),
+              importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
           setEnterprise(items); // 全置換（最新シートで上書き）
@@ -2826,24 +2850,49 @@ function EnterpriseView({ enterprise, setEnterprise }) {
                   {visibleDefs.map(col => {
                     const isEd = editCell?.id===rec.id && editCell?.key===col.key && col.key!=="companyName";
                     const open = () => col.key!=="companyName" && setEditCell({ id:rec.id, key:col.key });
+                    const save = (v) => saveCell(rec.id, col.key, (col.key==="lastCallDate"||col.key==="nextCallDate")? normDate(v) : v);
+                    const cancel = () => setEditCell(null);
                     const val = rec[col.key];
+                    const td = (inner) => <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>{inner}</td>;
+
+                    // 編集モード
                     if (isEd) {
-                      if (col.key==="memo") return <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden`}>
+                      if (col.key==="status") return td(
+                        <select autoFocus defaultValue={val||"未架電"} className={`${inputCls} w-full`} onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                          {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>);
+                      if (col.key==="leadSource") return td(
+                        <select autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                          <option value="">—</option>{Object.keys(LEAD_SOURCE_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>);
+                      if (col.key==="absenceReason") return td(
+                        <select autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                          <option value="">—</option>{Object.keys(ABSENCE_REASON_CFG).map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>);
+                      if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="leadAddedDate") {
+                        const dd = col.key==="lastCallDate" ? (normDate(val)||today) : (normDate(val)||"");
+                        return td(<input type="date" autoFocus defaultValue={dd} className={`${inputCls} w-full`}
+                          onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
+                      }
+                      if (col.key==="memo") return td(
                         <textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`}
-                          onBlur={e=>saveCell(rec.id,col.key,e.target.value)} onKeyDown={e=>{if(e.key==="Escape")setEditCell(null);if(e.key==="Enter"&&e.ctrlKey)saveCell(rec.id,col.key,e.target.value);}}/></td>;
-                      return <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden`}>
-                        <input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`}
-                          onBlur={e=>saveCell(rec.id,col.key,e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveCell(rec.id,col.key,e.target.value);if(e.key==="Escape")setEditCell(null);}}/></td>;
+                          onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/>);
+                      return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`}
+                        onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
                     }
-                    return (
-                      <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>
-                        <div onClick={open} className={`truncate ${col.key==="companyName"?"font-medium text-slate-800":"text-slate-600 cursor-pointer hover:bg-slate-50 rounded"}`} title={String(val||"")}>
-                          {col.key==="storeCount" && val ? Number(String(val).replace(/,/g,"")).toLocaleString()
-                           : col.key==="lastUpdate" ? (val ? fmtDate(normDate(String(val))) : <span className="text-slate-300">—</span>)
-                           : (val || <span className="text-slate-300">—</span>)}
-                        </div>
-                      </td>
-                    );
+
+                    // 表示モード
+                    if (col.key==="companyName") return td(<div className="truncate font-medium text-slate-800" title={String(val||"")}>{val||"—"}</div>);
+                    if (col.key==="status") return td(<span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span>);
+                    if (col.key==="leadSource") return td(val ? <span onClick={open} className="cursor-pointer"><LeadSourceBadge source={val}/></span> : <span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
+                    if (col.key==="absenceReason") return td(val ? <span onClick={open} className="cursor-pointer"><AbsenceReasonBadge reason={val}/></span> : <span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
+                    if (col.key==="lastCallDate"||col.key==="nextCallDate"||col.key==="leadAddedDate") {
+                      const nd = normDate(val);
+                      return td(<span onClick={open} className={`cursor-pointer text-xs hover:bg-slate-100 rounded px-1 ${nd&&nd<today&&col.key==="nextCallDate"?"text-red-600 font-bold":"text-slate-600"}`}>{nd?fmtDate(nd):<span className="text-slate-300">— 設定</span>}</span>);
+                    }
+                    if (col.key==="storeCount") return td(<span onClick={open} className="cursor-pointer hover:bg-slate-50 rounded px-0.5"><StoreCountCell analysis={analyzeStoreCount(rec, storeIndex)}/></span>);
+                    if (col.key==="memo") return td(<div onClick={open} className="truncate text-slate-600 text-xs cursor-pointer hover:bg-slate-50 rounded" title={String(val||"")}>{val||<span className="text-slate-300">—</span>}</div>);
+                    return td(<div onClick={open} className="truncate text-slate-600 text-xs cursor-pointer hover:bg-slate-50 rounded" title={String(val||"")}>{val||<span className="text-slate-300">—</span>}</div>);
                   })}
                 </tr>
               ))}
