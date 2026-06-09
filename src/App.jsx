@@ -999,7 +999,7 @@ function downloadTemplate(mode) {
 }
 
 // ── ImportModal ────────────────────────────────────────────────────────────────
-function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
+function ImportModal({ onImport, onImportPastDeals, onImportMetel, onImportOrders, onClose }) {
   const [mode,      setMode]      = useState("sales");
   const [inputMode, setInputMode] = useState("file");   // "file" | "paste"
   const [pasteText, setPasteText] = useState("");
@@ -1014,7 +1014,11 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
     setProgress(`${rows.length.toLocaleString()} 行を解析中...`);
     setTimeout(() => {
       try {
-        if (mode === "past") {
+        if (mode === "order") {
+          const result = doImportOrders(rows);
+          setLog(result);
+          if (result.orders?.length > 0) onImportOrders(result.orders);
+        } else if (mode === "past") {
           const result = doImportPastDeals(rows);
           setLog(result);
           if (result.deals?.length > 0) onImportPastDeals(result.deals);
@@ -1056,6 +1060,33 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
       deals.push({ companyName: company, pastStatus: g("pastStatus"), lastCallDate: normDate(g("lastCallDate")), dealOwner: g("dealOwner"), memo: g("memo"), importedAt: nowIso() });
     }
     return { success:true, deals, skipped, added: deals.length };
+  }
+
+  function doImportOrders(rows) {
+    if (rows.length < 2) return { error:"データ行が不足しています", orders:[] };
+    const headerIdx = isAggregateRow(rows[0]) ? 1 : 0;
+    const headers = rows[headerIdx];
+    const map = mapOrderHeaders(headers);
+    if (map.companyName === undefined) {
+      return { error:`「企業名」列が見つかりませんでした。ヘッダー: ${headers.filter(h=>h).slice(0,6).join("、")}`, orders:[] };
+    }
+    const orders = []; let skipped = 0;
+    for (const row of rows.slice(headerIdx+1)) {
+      if (row.every(c => !c.trim())) continue;
+      const company = (row[map.companyName]??"").trim();
+      if (!company) { skipped++; continue; }
+      const g = k => map[k]!==undefined ? (row[map[k]]||"").trim() : "";
+      orders.push({
+        id: genId(), companyName: company,
+        orderDate: normDate(g("orderDate")) || "",
+        plan: g("plan"), amount: g("amount"),
+        assignee: g("assignee"),
+        payment: g("payment") || "未入金",
+        startDate: normDate(g("startDate")) || "",
+        memo: g("memo"), updatedAt: nowIso(),
+      });
+    }
+    return { success:true, orders, skipped, added: orders.length };
   }
 
   const process = text => processRows(parseCSV(text));
@@ -1223,6 +1254,8 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
               desc:"ISメンバー10名に自動絞り込み。未登録企業は新規追加（追加者記録）、既登録は別担当者・最新架電日を更新。" },
             { value:"past",  icon:"📜", title:"過去商談リスト（プル照合用）を取り込む",
               desc:"企業名・過去の状況・担当者・メモを読込。メインリストと自動照合してバッジ表示します。" },
+            { value:"order", icon:"🛍️", title:"受注案件リストを取り込む",
+              desc:"企業名・受注日・商材・金額・担当者を自動マッピング。受注案件管理へ保存（同名は上書き）。" },
           ].map(opt => (
             <label key={opt.value}
               className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors
@@ -1334,6 +1367,8 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onClose }) {
               <span>
                 {log.metel
                   ? <>✅ MiiTel取込完了（取込月: {callMonth.replace("-","/")}）: 新規追加 <strong>{(log.added||0).toLocaleString()}件</strong> ／ 既存更新 <strong>{(log.updated||0).toLocaleString()}件</strong></>
+                  : log.orders
+                  ? <>✅ 受注案件インポート完了: <strong>{log.orders.length}件</strong>（同一企業名は上書き更新）</>
                   : log.deals
                   ? <>✅ 過去商談インポート完了: <strong>{log.deals.length}件</strong>（同一企業名は上書き更新）</>
                   : <>✅ インポート完了: <strong>{log.records.length}件</strong>追加</>}
@@ -1686,7 +1721,7 @@ function DuplicateModal({ records, onClean, onClose, sortFn, renderExtra }) {
 }
 
 // ── RecordFormModal (shared by New & Edit) ─────────────────────────────────────
-function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, storeEstimate }) {
+function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, storeEstimate, ordered, onCopyToOrder }) {
   const [form, setForm] = useState({
     companyName:"", phone:"", email:"", mailFlag:"",
     hpSite:"", gbp:"", gbpSiteUrl:"", gbpManagement:"",
@@ -1867,11 +1902,17 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
           </div>
         </div>
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 shrink-0">
-          <div>
+          <div className="flex items-center gap-2">
             {onDelete && (
               <button onClick={onDelete}
                 className="px-4 py-2 text-sm text-rose-500 hover:text-rose-700 border border-rose-200 hover:border-rose-400 hover:bg-rose-50 rounded-lg transition-colors">
                 🗑️ 削除する
+              </button>
+            )}
+            {onCopyToOrder && (
+              <button onClick={onCopyToOrder}
+                className="px-4 py-2 text-sm text-emerald-700 hover:text-emerald-800 border border-emerald-300 hover:bg-emerald-50 rounded-lg transition-colors">
+                🛍️ 受注案件へコピー
               </button>
             )}
           </div>
@@ -1969,7 +2010,7 @@ function generateReport(records, today, soon) {
   return { todayCalls, apo, apoRate, total, overdue: overdue.length, upcoming: upcoming.length, insights, actions, strategy, storeStats, topAssignee };
 }
 
-function ReportView({ records, pastDeals = [] }) {
+function ReportView({ records, pastDeals = [], orders = [] }) {
   const today = getToday();
   const soon  = (() => { const d=new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
   const report = generateReport(records, today, soon);
@@ -2055,6 +2096,19 @@ function ReportView({ records, pastDeals = [] }) {
     return { ...seg, total:rs.length, apo, rate: rs.length ? (apo/rs.length*100) : 0 };
   });
 
+  // ── 受注集計 ─────────────────────────────────────────────────────────────────
+  const orderAmount = (o) => { const n = parseInt(String(o.amount??"").replace(/[,，円\s]/g,""),10); return Number.isFinite(n)?n:0; };
+  const thisMonth = today.slice(0,7); // YYYY-MM
+  const monthOrders = orders.filter(o => normDate(o.orderDate).slice(0,7) === thisMonth);
+  const monthTotal  = monthOrders.reduce((s,o)=>s+orderAmount(o),0);
+  const orderTotalAll = orders.reduce((s,o)=>s+orderAmount(o),0);
+  // IS担当者別 受注貢献
+  const orderByMember = IS_MEMBERS.map(m => {
+    const mn = normName(m);
+    const rs = orders.filter(o => { const an=normName(o.assignee||""); return an===mn || an.includes(mn) || mn.includes(an); });
+    return { name:m, count:rs.length, amount:rs.reduce((s,o)=>s+orderAmount(o),0) };
+  }).filter(s => s.count>0).sort((a,b)=>b.amount-a.amount);
+
   return (
     <div className="space-y-4">
       {/* KPI */}
@@ -2071,6 +2125,43 @@ function ReportView({ records, pastDeals = [] }) {
           </div>
         ))}
       </div>
+
+      {/* 受注集計 */}
+      <Section title="🛍️ 受注集計">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+          {[
+            { label:`当月受注総額（${thisMonth.replace("-","/")}）`, value:`¥${monthTotal.toLocaleString()}`, color:"text-emerald-700", bg:"bg-emerald-50" },
+            { label:"当月受注件数", value:`${monthOrders.length}件`, color:"text-emerald-700", bg:"bg-emerald-50" },
+            { label:"累計受注総額", value:`¥${orderTotalAll.toLocaleString()}`, color:"text-teal-700",  bg:"bg-teal-50" },
+          ].map(k=>(
+            <div key={k.label} className={`${k.bg} rounded-xl border border-slate-200 p-4 text-center`}>
+              <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
+              <div className="text-xs text-slate-500 mt-1">{k.label}</div>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs font-semibold text-slate-500 mb-2">IS担当者別 受注貢献ランキング</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead><tr className="border-b-2 border-slate-200 text-slate-500 text-left">
+              <th className="pb-2 font-semibold">担当者</th>
+              <th className="pb-2 font-semibold text-right">受注件数</th>
+              <th className="pb-2 font-semibold text-right">合計受注金額</th>
+            </tr></thead>
+            <tbody>
+              {orderByMember.length===0 ? (
+                <tr><td colSpan={3} className="py-6 text-center text-slate-400">受注データがありません</td></tr>
+              ) : orderByMember.map((s,i)=>(
+                <tr key={s.name} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="py-2 text-slate-700 font-medium whitespace-nowrap">{i+1}. {s.name}</td>
+                  <td className="py-2 text-right text-slate-600">{s.count}件</td>
+                  <td className="py-2 text-right font-bold text-emerald-700">¥{s.amount.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
 
       {/* 今日のアクション */}
       {report.actions.length > 0 && (
@@ -2581,6 +2672,47 @@ const PAST_EXTRA_COLS = [
   { key:"progress",   label:"進捗",       required:false, w:"w-[150px]" },
   { key:"targetDate", label:"完了予定日", required:false, w:"w-[110px]" },
 ];
+
+// ── 受注案件管理 ───────────────────────────────────────────────────────────────
+const ORDER_PLANS = ["ライトプラン","スタンダードプラン","プレミアムプラン","その他"];
+const PAYMENT_STATUS_CFG = {
+  "未入金":   { bg:"bg-rose-100",   text:"text-rose-700",   dot:"bg-rose-500"   },
+  "一部入金": { bg:"bg-amber-100",  text:"text-amber-700",  dot:"bg-amber-500"  },
+  "入金済":   { bg:"bg-green-100",  text:"text-green-700",  dot:"bg-green-500"  },
+  "要確認":   { bg:"bg-slate-200",  text:"text-slate-600",  dot:"bg-slate-500"  },
+};
+const ORDER_COLS = [
+  { key:"orderDate",    label:"受注日",          required:false, w:"w-[110px]" },
+  { key:"companyName",  label:"企業名",          required:true,  w:"w-[220px]" },
+  { key:"plan",         label:"プラン/商材",     required:false, w:"w-[150px]" },
+  { key:"amount",       label:"受注金額",        required:false, w:"w-[120px]" },
+  { key:"assignee",     label:"担当者",          required:false, w:"w-[110px]" },
+  { key:"payment",      label:"入金ステータス",  required:false, w:"w-[130px]" },
+  { key:"startDate",    label:"稼働開始日",      required:false, w:"w-[110px]" },
+  { key:"memo",         label:"受注メモ/案件詳細", required:false, w:"w-[240px]" },
+];
+const ORDER_DEFAULT_VISIBLE = ORDER_COLS.map(c => c.key);
+
+// 受注CSVヘッダーマッピング
+function mapOrderHeaders(headers) {
+  const m = {};
+  headers.forEach((h, i) => {
+    const n = String(h).replace(/[\s　]/g,"");
+    if (/企業名|会社名|取引先名?|法人名/.test(n))      m.companyName = i;
+    else if (/受注日|契約日|成約日/.test(n))            m.orderDate   = i;
+    else if (/プラン|商材|商品|サービス/.test(n))        m.plan        = i;
+    else if (/金額|受注額|契約金額|売上/.test(n))        m.amount      = i;
+    else if (/担当者?|営業担当/.test(n))                m.assignee    = i;
+    else if (/入金|支払/.test(n))                       m.payment     = i;
+    else if (/稼働開始|開始日/.test(n))                 m.startDate   = i;
+    else if (/メモ|備考|詳細|コメント/.test(n))          m.memo        = i;
+  });
+  return m;
+}
+function parseAmount(v) {
+  const n = parseInt(String(v ?? "").replace(/[,，円\s]/g,""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
 const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
 const DEFAULT_PAST_VISIBLE = [
   "companyName","progress","lastCallDate","nextCallDate","status","storeCount","phone",
@@ -2977,6 +3109,178 @@ function EnterpriseView({ enterprise, setEnterprise, records = [] }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── OrderView（受注案件管理） ──────────────────────────────────────────────────
+function OrderView({ orders, setOrders, members }) {
+  const savedUI = (() => { try { return JSON.parse(localStorage.getItem("teppou_order_ui_v1") || "{}"); } catch { return {}; } })();
+  const [search,      setSearch]      = useState("");
+  const [payFilter,   setPayFilter]   = useState("all");
+  const [editCell,    setEditCell]    = useState(null);
+  const [visibleCols, setVisibleCols] = useState(Array.isArray(savedUI.visibleCols)&&savedUI.visibleCols.length ? savedUI.visibleCols : ORDER_DEFAULT_VISIBLE);
+  const [showColDrop, setShowColDrop] = useState(false);
+  const [sortKey,     setSortKey]     = useState(savedUI.sortKey ?? "orderDate");
+  const [sortDir,     setSortDir]     = useState(savedUI.sortDir || "desc");
+  const [page,        setPage]        = useState(1);
+  const colDropRef = useRef();
+  const PAGE = 100;
+
+  useEffect(() => { try { localStorage.setItem("teppou_order_ui_v1", JSON.stringify({ visibleCols, sortKey, sortDir })); } catch {} }, [visibleCols, sortKey, sortDir]);
+  useEffect(() => {
+    if (!showColDrop) return;
+    const fn = e => { if (colDropRef.current && !colDropRef.current.contains(e.target)) setShowColDrop(false); };
+    document.addEventListener("mousedown", fn);
+    return () => document.removeEventListener("mousedown", fn);
+  }, [showColDrop]);
+
+  const visibleDefs = visibleCols.map(k => ORDER_COLS.find(c=>c.key===k)).filter(Boolean);
+  const payCounts = useMemo(() => { const m={}; orders.forEach(o=>{const s=o.payment||"未入金"; m[s]=(m[s]||0)+1;}); return m; }, [orders]);
+
+  const filtered = useMemo(() => {
+    let rs = orders.filter(o => {
+      if (payFilter!=="all" && (o.payment||"未入金")!==payFilter) return false;
+      if (search) { const q=search.toLowerCase(); return ORDER_COLS.some(c=>String(o[c.key]||"").toLowerCase().includes(q)); }
+      return true;
+    });
+    if (sortKey) rs=[...rs].sort((a,b)=>{
+      if (sortKey==="amount") { const d=parseAmount(a.amount)-parseAmount(b.amount); return sortDir==="asc"?d:-d; }
+      const va=String(a[sortKey]||""), vb=String(b[sortKey]||""); const cmp=va.localeCompare(vb,"ja"); return sortDir==="asc"?cmp:-cmp;
+    });
+    return rs;
+  }, [orders, search, payFilter, sortKey, sortDir]);
+
+  const totalAmount = filtered.reduce((s,o)=>s+parseAmount(o.amount),0);
+  const totalPages = Math.max(1, Math.ceil(filtered.length/PAGE));
+  const paginated  = filtered.slice((page-1)*PAGE, page*PAGE);
+
+  const addRow = () => {
+    setOrders(p => [{ id:genId(), orderDate:getToday(), companyName:"", plan:"スタンダードプラン", amount:"", assignee:"", payment:"未入金", startDate:"", memo:"", updatedAt:nowIso() }, ...p]);
+    setPage(1);
+  };
+  const saveCell = (id,key,val) => { setEditCell(null); setOrders(p=>p.map(o=>o.id===id?{...o,[key]:val,updatedAt:nowIso()}:o)); };
+  const delRow = (id) => { if(window.confirm("この受注案件を削除しますか？")) setOrders(p=>p.filter(o=>o.id!==id)); };
+
+  const inputCls = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none bg-white";
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={addRow} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-lg text-xs font-semibold transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+            受注を追加
+          </button>
+          <div className="relative" ref={colDropRef}>
+            <button onClick={()=>setShowColDrop(v=>!v)} className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-300 text-slate-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M10 3v18M14 3v18"/></svg>列設定
+            </button>
+            {showColDrop && (
+              <div className="absolute left-0 top-full mt-1 bg-white rounded-xl border border-slate-200 shadow-xl z-20 p-3 w-64 max-h-96 overflow-y-auto">
+                <p className="text-xs font-semibold text-slate-400 mb-1 px-1">表示中の列（↑↓で並べ替え）</p>
+                {visibleCols.map((key,idx)=>{ const col=ORDER_COLS.find(c=>c.key===key); if(!col) return null; return (
+                  <div key={key} className="flex items-center gap-1 px-2 py-1 hover:bg-slate-50 rounded-lg">
+                    <div className="flex flex-col">
+                      <button disabled={idx===0} onClick={()=>setVisibleCols(p=>{const n=[...p];[n[idx-1],n[idx]]=[n[idx],n[idx-1]];return n;})} className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▲</button>
+                      <button disabled={idx===visibleCols.length-1} onClick={()=>setVisibleCols(p=>{const n=[...p];[n[idx+1],n[idx]]=[n[idx],n[idx+1]];return n;})} className="text-slate-400 hover:text-blue-600 disabled:opacity-20 leading-none text-[10px]">▼</button>
+                    </div>
+                    <span className="text-xs text-slate-700 flex-1 truncate">{col.label}</span>
+                    {key!=="companyName" && <button onClick={()=>setVisibleCols(p=>p.filter(k=>k!==key))} className="text-rose-400 hover:text-rose-600 text-xs">×</button>}
+                  </div>);
+                })}
+                {ORDER_COLS.some(c=>!visibleCols.includes(c.key)) && (<>
+                  <p className="text-xs font-semibold text-slate-400 mt-2 mb-1 px-1 border-t border-slate-100 pt-2">非表示の列</p>
+                  {ORDER_COLS.filter(c=>!visibleCols.includes(c.key)).map(col=>(
+                    <button key={col.key} onClick={()=>setVisibleCols(p=>[...p,col.key])} className="flex items-center gap-2 px-2 py-1 hover:bg-slate-50 rounded-lg w-full text-left"><span className="text-blue-500 text-xs">＋</span><span className="text-xs text-slate-500">{col.label}</span></button>
+                  ))}
+                </>)}
+              </div>
+            )}
+          </div>
+          <span className="text-xs text-slate-400 ml-auto">{orders.length.toLocaleString()}件 ／ 表示合計: <strong className="text-emerald-700">¥{totalAmount.toLocaleString()}</strong></span>
+        </div>
+        {Object.keys(payCounts).length>0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={()=>{setPayFilter("all");setPage(1);}} className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${payFilter==="all"?"bg-blue-600 text-white border-blue-600":"border-slate-200 text-slate-500 hover:bg-slate-50"}`}>全表示</button>
+            {Object.keys(PAYMENT_STATUS_CFG).map(s=> payCounts[s]?(
+              <button key={s} onClick={()=>{setPayFilter(payFilter===s?"all":s);setPage(1);}}
+                className={`flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg border transition-colors ${payFilter===s?`${PAYMENT_STATUS_CFG[s].bg} ${PAYMENT_STATUS_CFG[s].text} border-current ring-2 ring-blue-400 ring-offset-1`:`${PAYMENT_STATUS_CFG[s].bg} ${PAYMENT_STATUS_CFG[s].text} border-slate-200`}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS_CFG[s].dot}`}/>{s} {payCounts[s]}
+              </button>
+            ):null)}
+          </div>
+        )}
+        <div className="relative">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="企業名・プラン・担当者・メモで検索..." className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-auto max-h-[calc(100vh-300px)]">
+          <table className="text-xs border-collapse table-fixed">
+            <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+              <tr>
+                {visibleDefs.map(col=>(
+                  <th key={col.key} onClick={()=>{ if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else {setSortKey(col.key);setSortDir("asc");} setPage(1); }}
+                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none bg-slate-50`}>
+                    <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>{sortKey===col.key?<span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span>:<span className="text-slate-300 shrink-0">⇅</span>}</span>
+                  </th>
+                ))}
+                <th className="w-[64px] px-3 py-2.5 text-left text-xs font-semibold text-slate-500 bg-slate-50">操作</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginated.length===0 ? (
+                <tr><td colSpan={visibleDefs.length+1} className="text-center py-14 text-slate-400 text-sm">受注案件がありません。「受注を追加」またはCSVインポートで登録してください。</td></tr>
+              ) : paginated.map(o=>(
+                <tr key={o.id} className="hover:bg-slate-50/60 transition-colors">
+                  {visibleDefs.map(col=>{
+                    const isEd = editCell?.id===o.id && editCell?.key===col.key;
+                    const open = () => setEditCell({ id:o.id, key:col.key });
+                    const save = (v) => saveCell(o.id, col.key, (col.key==="orderDate"||col.key==="startDate")?normDate(v):v);
+                    const cancel = () => setEditCell(null);
+                    const val = o[col.key];
+                    const td = (inner) => <td key={col.key} className={`${col.w} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>{inner}</td>;
+                    if (isEd) {
+                      if (col.key==="plan") return td(<select autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}><option value="">—</option>{ORDER_PLANS.map(s=><option key={s} value={s}>{s}</option>)}</select>);
+                      if (col.key==="payment") return td(<select autoFocus defaultValue={val||"未入金"} className={`${inputCls} w-full`} onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>{Object.keys(PAYMENT_STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}</select>);
+                      if (col.key==="assignee") return td(<><input list="ent-members" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/><datalist id="ent-members">{members.map(m=><option key={m} value={m}/>)}</datalist></>);
+                      if (col.key==="orderDate"||col.key==="startDate") return td(<input type="date" autoFocus defaultValue={normDate(val)||(col.key==="orderDate"?getToday():"")} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
+                      if (col.key==="amount") return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
+                      if (col.key==="memo") return td(<textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/>);
+                      return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
+                    }
+                    if (col.key==="companyName") return td(<div onClick={open} className="truncate font-medium text-slate-800 cursor-pointer hover:text-blue-600" title={String(val||"")}>{val||<span className="text-slate-300">— 入力</span>}</div>);
+                    if (col.key==="plan") return td(val?<span onClick={open} className="cursor-pointer inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200 truncate max-w-full">{val}</span>:<span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
+                    if (col.key==="payment") { const c=PAYMENT_STATUS_CFG[val||"未入金"]??{}; return td(<span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${c.bg} ${c.text}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{val||"未入金"}</span>); }
+                    if (col.key==="amount") return td(<span onClick={open} className="cursor-pointer text-slate-700 font-semibold hover:bg-slate-50 rounded px-1">{val?`¥${parseAmount(val).toLocaleString()}`:<span className="text-slate-300 font-normal">—</span>}</span>);
+                    if (col.key==="orderDate"||col.key==="startDate") { const nd=normDate(val); return td(<span onClick={open} className="cursor-pointer text-slate-600 hover:bg-slate-100 rounded px-1">{nd?fmtDate(nd):<span className="text-slate-300">— 設定</span>}</span>); }
+                    if (col.key==="memo") return td(<div onClick={open} className="truncate text-slate-600 cursor-pointer hover:bg-slate-50 rounded" title={String(val||"")}>{val||<span className="text-slate-300">—</span>}</div>);
+                    return td(<div onClick={open} className="truncate text-slate-600 cursor-pointer hover:bg-slate-50 rounded" title={String(val||"")}>{val||<span className="text-slate-300">—</span>}</div>);
+                  })}
+                  <td className="w-[64px] px-3 py-2 whitespace-nowrap align-middle">
+                    <button onClick={()=>delRow(o.id)} className="text-xs text-rose-500 hover:text-rose-700 font-medium">削除</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {totalPages>1 && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap bg-white rounded-b-xl">
+            <span className="text-xs text-slate-400">{filtered.length.toLocaleString()}件中 {(page-1)*PAGE+1}–{Math.min(page*PAGE,filtered.length)}件</span>
+            <div className="flex gap-1">
+              <button onClick={()=>setPage(1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">«</button>
+              <button onClick={()=>setPage(p=>p-1)} disabled={page===1} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">‹</button>
+              <span className="px-3 py-1 text-xs text-slate-600">{page} / {totalPages}</span>
+              <button onClick={()=>setPage(p=>p+1)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">›</button>
+              <button onClick={()=>setPage(totalPages)} disabled={page===totalPages} className="px-2 py-1 text-xs rounded border border-slate-200 text-slate-500 disabled:opacity-30 hover:bg-slate-50">»</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -3554,6 +3858,7 @@ function HelpModal({ onClose }) {
     { icon:"🏢", title:"店舗数未記入データの自動分析と（仮）表示", body:`店舗数が未記入の企業は、企業名をもとに自動で推測値を表示します。\n① 同名・系列社名で店舗数が入力済みのレコードがあれば、その数値を採用。\n② データベース内に全く同じ企業名が複数登録されている場合（多店舗チェーン等）、その重複件数を推測値とします。\n・手動入力の確定値はそのまま数値表示、自動推測値は「5（仮）」のようにグレーの「（仮）」付きで表示されます。\n・編集モーダルで正しい数値を入力して保存すると、確定値として上書きされ「（仮）」が外れます。` },
     { icon:"✏️", title:"インライン編集", body:`テーブルのセルをクリックすると直接編集できます。状況はセレクト、メモはテキストエリア、架電日は本日をデフォルトで表示します。Enterで保存、Escapeでキャンセル。` },
     { icon:"🏢", title:"エンタープライズ管理タブ", body:`大手・多店舗企業の商談を管理する専用タブです。\n・「Excelインポート（大手シート）」で、大手シート（状況・社内担当者・企業ブランド名・法人名・業種・店舗数・商談名・GMO営業フェーズ・最終更新日など）を取り込みます（インポートで全置換）。\n・通常リストと同様に、列設定（表示/並べ替え）・ソート・検索・状況フィルター・セルのインライン編集に対応。\n・データは営業リストとは独立して保存されます。` },
+    { icon:"🛍️", title:"受注案件管理の使い方", body:`受注した案件を管理する専用タブ（営業リストとは独立保存）です。\n・項目：受注日・企業名・プラン/商材・受注金額・担当者・入金ステータス（未入金/一部入金/入金済/要確認）・稼働開始日・受注メモ。\n・「受注を追加」で手動登録、またはCSVインポートの「🛍️ 受注案件リストを取り込む」で一括取込（企業名・受注日・商材・金額・担当者を自動マッピング、同名は上書き）。\n・営業リストで状況が「成約/当社契約」または受注登録済みの企業には、リスト・編集画面に「🛍️受注済案件」バッジを表示。\n・編集モーダルの「🛍️ 受注案件へコピー」で、企業名・担当者を引き継いで受注案件に雛形登録できます。\n・レポート分析に当月受注総額・件数、IS担当者別の受注貢献ランキングを表示します。` },
   ];
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -3602,6 +3907,7 @@ export default function App() {
   const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談プル照合用
   const [pastMgmt,       setPastMgmt]       = useState([]);   // 過去商談管理（再アプローチ）
   const [enterprise,     setEnterprise]     = useState([]);   // エンタープライズ管理（大手）
+  const [orders,         setOrders]         = useState([]);   // 受注案件管理
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [showHelp,       setShowHelp]       = useState(false);
   const [search,         setSearch]         = useState("");
@@ -3621,7 +3927,7 @@ export default function App() {
   const [showNew,        setShowNew]        = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
-  const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise"].includes(savedUI.view) ? savedUI.view : "list");
+  const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise","orders"].includes(savedUI.view) ? savedUI.view : "list");
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
@@ -3712,6 +4018,10 @@ export default function App() {
     }).catch(() => { try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {} });
     // エンタープライズ管理（大手）
     idbKvGet("enterprise").then(d => { if (Array.isArray(d) && d.length) setEnterprise(d); }).catch(()=>{});
+    // 受注案件管理
+    idbKvGet("orders").then(d => { if (Array.isArray(d) && d.length) setOrders(d); }).catch(()=>{
+      try { const s = localStorage.getItem("sales_mgr_orders"); if (s) setOrders(JSON.parse(s)); } catch {}
+    });
     // 過去商談管理: 現IDB → 旧分離IDB → localStorage の順で復旧
     (async () => {
       try {
@@ -3774,6 +4084,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { idbKvSet("pastDeals", pastDeals).catch(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }); }, [pastDeals]);
   useEffect(() => { idbKvSet("enterprise", enterprise).catch(()=>{}); }, [enterprise]);
+  useEffect(() => { idbKvSet("orders", orders).catch(() => { try { localStorage.setItem("sales_mgr_orders", JSON.stringify(orders)); } catch {} }); }, [orders]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
   // UI 状態（列設定・ビュー・ソート）を保存
   useEffect(() => {
@@ -3960,6 +4271,40 @@ export default function App() {
       return Object.values(map);
     });
   }, [snapshotForRollback]);
+
+  // 受注CSVインポート（企業名で上書き更新）
+  const addOrders = useCallback((newOrders) => {
+    snapshotForRollback();
+    setOrders(prev => {
+      const map = {};
+      prev.forEach(o => { map[normName(o.companyName)] = o; });
+      newOrders.forEach(o => { const k = normName(o.companyName); map[k] = { ...map[k], ...o, id: map[k]?.id || o.id }; });
+      return Object.values(map);
+    });
+  }, [snapshotForRollback]);
+
+  // 営業リスト→受注案件へワンクリックコピー
+  const addOrderFromRecord = useCallback((rec) => {
+    setOrders(prev => [{
+      id: genId(),
+      orderDate:   getToday(),
+      companyName: rec.companyName,
+      plan:        "スタンダードプラン",
+      amount:      "",
+      assignee:    rec.createdBy || rec.assignee || "",
+      payment:     "未入金",
+      startDate:   "",
+      memo:        rec.memo || "",
+      updatedAt:   nowIso(),
+    }, ...prev]);
+  }, []);
+
+  // 受注済み企業名セット（バッジ用）
+  const orderedNames = useMemo(() => new Set(orders.map(o => normName(o.companyName))), [orders]);
+  const isOrdered = useCallback((rec) => {
+    if (rec?.status === "成約" || rec?.status === "8.当社契約") return true;
+    return orderedNames.has(normName(rec?.companyName || ""));
+  }, [orderedNames]);
 
   const addPastDealToList = useCallback((deal) => {
     setRecords(p => {
@@ -4201,7 +4546,7 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンプラ"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンプラ"],["orders","🛍️ 受注案件"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
               className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -4211,7 +4556,7 @@ export default function App() {
         </div>
 
         {/* ── Analysis view ── */}
-        {view==="analysis" && <ReportView records={records} pastDeals={pastDeals} />}
+        {view==="analysis" && <ReportView records={records} pastDeals={pastDeals} orders={orders} />}
 
         {/* ── 過去商談管理 ── */}
         {view==="pastmgmt" && <PastMgmtView pastMgmt={pastMgmt} setPastMgmt={setPastMgmt} records={records}
@@ -4222,6 +4567,9 @@ export default function App() {
         {view==="enterprise" && <PastMgmtView pastMgmt={enterprise} setPastMgmt={setEnterprise} records={records}
           onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
           onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
+
+        {/* ── 受注案件管理 ── */}
+        {view==="orders" && <OrderView orders={orders} setOrders={setOrders} members={IS_MEMBERS} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
@@ -4602,6 +4950,11 @@ export default function App() {
                               title="クリックでコピー"
                               className={`group flex items-center gap-1 w-full flex-wrap text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
                               <span className="font-medium text-xs truncate max-w-40">{val || "—"}</span>
+                              {isOrdered(rec) && (
+                                <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap">
+                                  🛍️受注済案件
+                                </span>
+                              )}
                               {pd && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700 border border-purple-300 whitespace-nowrap">
                                   📜{pd.pastStatus || "過去商談あり"}
@@ -4743,7 +5096,7 @@ export default function App() {
           hasAutoBackup={hasAutoBackup} dataCounts={{ records: records.length, pastMgmt: pastMgmt.length }} />
       )}
       {showImport && (
-        <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onImportMetel={importMetelMerge} onClose={() => setShowImport(false)} />
+        <ImportModal onImport={addRecords} onImportPastDeals={addPastDeals} onImportMetel={importMetelMerge} onImportOrders={addOrders} onClose={() => setShowImport(false)} />
       )}
       {showDupe && (
         <DuplicateModal records={records} onClean={cleanDuplicates} onClose={() => setShowDupe(false)} />
@@ -4768,6 +5121,8 @@ export default function App() {
           onDelete={() => { deleteRecord(editRec.id); setEditRec(null); }}
           pastDeal={findPastDeal(editRec.companyName)}
           storeEstimate={analyzeStoreCount(editRec, storeIndex)}
+          ordered={isOrdered(editRec)}
+          onCopyToOrder={() => { addOrderFromRecord(editRec); window.alert("🛍️ 受注案件管理に登録しました。受注案件タブで詳細を入力してください。"); }}
         />
       )}
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
