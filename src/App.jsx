@@ -204,6 +204,7 @@ function mapPastMgmtHeaders(headers) {
     else if (/完了予定日|予定日/.test(n))      m.targetDate   = i;
     else if (/確度/.test(n))                   m.probability  = i;
     else if (/作成者|担当者/.test(n))          m.creator      = i;
+    else if (/状況|フェーズ|進捗|ステータス|状態/.test(n)) m.progress = i; // 進捗（プルダウン）
   });
   return m;
 }
@@ -2577,11 +2578,12 @@ function PullView({ records }) {
 
 // ── 過去商談専用追加列（ALL_COLUMNSに含まれない） ──────────────────────────────
 const PAST_EXTRA_COLS = [
+  { key:"progress",   label:"進捗",       required:false, w:"w-[150px]" },
   { key:"targetDate", label:"完了予定日", required:false, w:"w-[110px]" },
 ];
 const ALL_PAST_COLS = [...ALL_COLUMNS, ...PAST_EXTRA_COLS];
 const DEFAULT_PAST_VISIBLE = [
-  "companyName","lastCallDate","nextCallDate","status","storeCount","phone",
+  "companyName","progress","lastCallDate","nextCallDate","status","storeCount","phone",
   "createdBy","assignee","leadSource","memo","targetDate",
 ];
 
@@ -3011,6 +3013,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
     new Set(records.map(r => normName(r.companyName))), [records]);
   // 店舗数分析インデックス（過去商談＋営業リスト、一度だけ構築）
   const storeIndex = useMemo(() => buildStoreIndex(pastMgmt, records), [pastMgmt, records]);
+  // 進捗プルダウンの選択肢（データ内の状況値から動的生成）
+  const progressOptions = useMemo(() => {
+    const s = new Set();
+    pastMgmt.forEach(r => { if (r.progress && String(r.progress).trim()) s.add(String(r.progress).trim()); });
+    return [...s].sort();
+  }, [pastMgmt]);
 
   const isInCurrent = (name) => {
     const n = normName(name);
@@ -3115,6 +3123,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
               leadAddedDate: getToday(),
               // 過去商談専用
               targetDate:       td,
+              progress:         map.progress !== undefined ? String(row[map.progress]??"").trim() : "",
               importedAt: nowIso(), updatedAt: nowIso(),
             });
           }
@@ -3320,6 +3329,12 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
                             {Object.keys(STATUS_CFG).map(s=><option key={s} value={s}>{s}</option>)}
                           </select></td>;
+                        if (col.key === "progress") return <td key={col.key} className="px-3 py-2">
+                          <select autoFocus defaultValue={val||""} className={`${inputCls} w-40`}
+                            onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
+                            <option value="">—</option>
+                            {progressOptions.map(s=><option key={s} value={s}>{s}</option>)}
+                          </select></td>;
                         if (col.key === "leadSource") return <td key={col.key} className="px-3 py-2">
                           <select autoFocus defaultValue={val||""} className={`${inputCls} w-32`}
                             onChange={e=>save(e.target.value)} onBlur={cancel} onKeyDown={e=>e.key==="Escape"&&cancel()}>
@@ -3379,6 +3394,9 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                       );
                       if (col.key==="status") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span></td>;
+                      if (col.key==="progress") return <td key={col.key} className="px-3 py-2 overflow-hidden">
+                        {val ? <span onClick={open} className="cursor-pointer inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200 truncate max-w-full">{val}</span>
+                             : <span onClick={open} className="text-slate-300 text-xs cursor-pointer hover:text-slate-500">— 設定</span>}</td>;
                       if (col.key==="leadSource") return <td key={col.key} className="px-3 py-2">
                         <span onClick={open} className="cursor-pointer hover:opacity-80"><LeadSourceBadge source={val}/></span></td>;
                       if (col.key==="absenceReason") return <td key={col.key} className="px-3 py-2">
