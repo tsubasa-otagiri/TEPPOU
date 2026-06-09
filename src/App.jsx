@@ -200,7 +200,7 @@ function mapPastMgmtHeaders(headers) {
   const m = {};
   headers.forEach((h, i) => {
     const n = String(h).replace(/[\s　]/g,"").toLowerCase();
-    if (/取引先名|会社名|企業名/.test(n))     m.companyName  = i;
+    if (/取引先名|会社名|企業名|ブランド名/.test(n))     m.companyName  = i;
     else if (/完了予定日|予定日/.test(n))      m.targetDate   = i;
     else if (/確度/.test(n))                   m.probability  = i;
     else if (/作成者|担当者/.test(n))          m.creator      = i;
@@ -4201,7 +4201,9 @@ export default function App() {
           onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
 
         {/* ── エンタープライズ管理 ── */}
-        {view==="enterprise" && <EnterpriseView enterprise={enterprise} setEnterprise={setEnterprise} records={records} />}
+        {view==="enterprise" && <PastMgmtView pastMgmt={enterprise} setPastMgmt={setEnterprise} records={records}
+          onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
+          onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
 
         {/* ── List view ── */}
         {view==="list" && <>
