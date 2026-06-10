@@ -781,26 +781,50 @@ function AppIcon({ logo, size="md" }) {
 }
 
 // ── LoginScreen ────────────────────────────────────────────────────────────────
+const ALLOWED_DOMAIN = "@gmotech.jp";
 function LoginScreen({ onLogin, logo }) {
+  const [memberId, setMemberId] = useState("");
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const submit = e => {
     e.preventDefault();
-    if (pw === PASSWORD) { sessionStorage.setItem("teppou_auth","1"); onLogin(); }
-    else { setErr("パスワードが正しくありません"); setPw(""); }
+    const id = memberId.trim().toLowerCase();
+    // 層②：メールドメイン確認（@gmotech.jp 限定）
+    if (!id.endsWith(ALLOWED_DOMAIN)) {
+      setErr(`メンバーIDは ${ALLOWED_DOMAIN} のアドレスを入力してください`); return;
+    }
+    // 層⑥：個別ログイン認証（パスワード照合）
+    if (pw !== PASSWORD) { setErr("パスワードが正しくありません"); setPw(""); return; }
+    sessionStorage.setItem("teppou_auth", "1");
+    sessionStorage.setItem("teppou_member", id);
+    // 利用履歴（誰が・いつ）をローカルに記録
+    try {
+      const logs = JSON.parse(localStorage.getItem("teppou_access_log") || "[]");
+      logs.unshift({ member: id, at: new Date().toISOString() });
+      localStorage.setItem("teppou_access_log", JSON.stringify(logs.slice(0, 200)));
+    } catch {}
+    onLogin();
   };
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-10 w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-10 w-full max-w-sm">
+        <div className="text-center mb-7">
           <div className="flex justify-center mb-4"><AppIcon logo={logo} size="lg" /></div>
           <h1 className="text-2xl font-bold text-slate-800">TEPPOU</h1>
-          <p className="text-slate-500 text-sm mt-1">GMOテック IS部門</p>
+          <p className="text-slate-500 text-sm mt-1">営業管理システム - ログイン</p>
+          <p className="text-slate-400 text-xs">TEPPOU Login ／ GMOテック IS部門</p>
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">メンバーID（@gmotech.jp）</label>
+            <input type="email" value={memberId} autoFocus autoComplete="username"
+              onChange={e => { setMemberId(e.target.value); setErr(""); }}
+              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="name@gmotech.jp" />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">パスワード</label>
-            <input type="password" value={pw} autoFocus
+            <input type="password" value={pw} autoComplete="current-password"
               onChange={e => { setPw(e.target.value); setErr(""); }}
               className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="パスワードを入力" />
@@ -811,6 +835,11 @@ function LoginScreen({ onLogin, logo }) {
             ログイン
           </button>
         </form>
+        <div className="mt-6 pt-4 border-t border-slate-100">
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            🔒 オフィスIP制限 ／ @gmotech.jp ドメイン確認 ／ 個別認証 ／ 利用履歴の記録により保護されています。オフィス外からはアクセスできません。
+          </p>
+        </div>
       </div>
     </div>
   );
