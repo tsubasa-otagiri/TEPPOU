@@ -3943,6 +3943,7 @@ export default function App() {
   const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電したリストを除外
+  const [leadSourceFilter, setLeadSourceFilter] = useState("all"); // ソース絞り込み
   // UI 状態をまとめて localStorage から復元
   const savedUI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } })();
   const [visibleCols,    setVisibleCols]    = useState(Array.isArray(savedUI.visibleCols) && savedUI.visibleCols.length ? savedUI.visibleCols : DEFAULT_VISIBLE_COLS);
@@ -4175,6 +4176,7 @@ export default function App() {
     if (statusFilterSet.size > 0 && statusFilterSet.size < ALL_STATUS_KEYS.length && !statusFilterSet.has(r.status)) return false;
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
     if (excludeTodayCalled && normDate(r.lastCallDate) === today) return false;
+    if (leadSourceFilter !== "all" && (r.leadSource||"") !== leadSourceFilter) return false;
     if (search) {
       const q = search;
       if (!(r.companyName||"").includes(q) && !(r.phone||"").includes(q) &&
@@ -4206,7 +4208,7 @@ export default function App() {
   useEffect(() => {
     setFrozenIds(sortedFiltered.map(r => r.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, statusFilterSet, records.length]);
+  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, leadSourceFilter, statusFilterSet, records.length]);
 
   const recById = new Map(records.map(r => [r.id, r]));
   // 店舗数分析インデックス（一度だけ構築）
@@ -4813,6 +4815,12 @@ export default function App() {
                 placeholder="企業名・電話番号・担当者・メモで検索..."
                 className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
+            {/* ソース絞り込み */}
+            <select value={leadSourceFilter} onChange={e => { setLeadSourceFilter(e.target.value); setPage(1); }}
+              className="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="all">全ソース</option>
+              {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
             {/* 今日架電を除外フィルター */}
             <button onClick={() => { setExcludeTodayCalled(v => !v); setPage(1); }}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
