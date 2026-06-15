@@ -523,7 +523,7 @@ const CompanyLogo = memo(function CompanyLogo({ url, name }) {
   if (!src || errSrc === src) {
     const ch = (String(name || "").trim().charAt(0) || "?").toUpperCase();
     return (
-      <span className={`w-5 h-5 rounded shadow-sm flex-shrink-0 inline-flex items-center justify-center text-[10px] leading-none font-bold font-mono select-none ${avatarColor(name)}`} aria-hidden="true">{ch}</span>
+      <span className={`w-5 h-5 rounded shadow-sm flex-shrink-0 inline-flex items-center justify-center text-[10px] leading-none font-bold font-mono ${avatarColor(name)}`} aria-hidden="true">{ch}</span>
     );
   }
   return (
@@ -827,7 +827,7 @@ function CropModal({ src, onCrop, onClose }) {
             <canvas
               ref={canvasRef}
               onMouseDown={onMouseDown}
-              className="max-w-full cursor-crosshair select-none"
+              className="max-w-full cursor-crosshair"
             />
           ) : (
             <div className="h-24 flex items-center justify-center text-slate-400 text-sm w-full">
@@ -3086,7 +3086,7 @@ function EnterpriseView({ enterprise, setEnterprise, records = [] }) {
               <tr>
                 {visibleDefs.map(col => (
                   <th key={col.key} onClick={()=>{ if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else {setSortKey(col.key);setSortDir("asc");} setPage(1); }}
-                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none bg-slate-50`}>
+                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 bg-slate-50`}>
                     <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>
                       {sortKey===col.key ? <span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300 shrink-0">⇅</span>}
                     </span>
@@ -3137,7 +3137,7 @@ function EnterpriseView({ enterprise, setEnterprise, records = [] }) {
                     }
 
                     // 表示モード
-                    if (col.key==="companyName") return td(<div className="truncate font-medium text-slate-800" title={String(val||"")}>{val||"—"}</div>);
+                    if (col.key==="companyName") return td(<div className="whitespace-nowrap truncate font-medium text-slate-800" title={String(val||"")}>{val||"—"}</div>);
                     if (col.key==="status") return td(<span onClick={open} className="cursor-pointer"><StatusBadge status={val}/></span>);
                     if (col.key==="leadSource") return td(val ? <span onClick={open} className="cursor-pointer"><LeadSourceBadge source={val}/></span> : <span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
                     if (col.key==="absenceReason") return td(val ? <span onClick={open} className="cursor-pointer"><AbsenceReasonBadge reason={val}/></span> : <span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
@@ -3341,7 +3341,7 @@ function OrderView({ orders, setOrders, members }) {
               <tr>
                 {visibleDefs.map(col=>(
                   <th key={col.key} onClick={()=>{ if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else {setSortKey(col.key);setSortDir("asc");} setPage(1); }}
-                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none bg-slate-50`}>
+                    className={`${col.w} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 bg-slate-50`}>
                     <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>{sortKey===col.key?<span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span>:<span className="text-slate-300 shrink-0">⇅</span>}</span>
                   </th>
                 ))}
@@ -3369,7 +3369,7 @@ function OrderView({ orders, setOrders, members }) {
                       if (col.key==="memo") return td(<textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/>);
                       return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
                     }
-                    if (col.key==="companyName") return td(<div onClick={open} className="flex items-center gap-1 cursor-pointer hover:text-blue-600" title={String(val||"")}><CompanyLogo url={o.hpSite} name={val} /><span className="truncate font-medium text-slate-800">{val||<span className="text-slate-300">— 入力</span>}</span></div>);
+                    if (col.key==="companyName") return td(<div onClick={open} className="flex items-center gap-1 cursor-pointer hover:text-blue-600" title={String(val||"")}><CompanyLogo url={o.hpSite} name={val} /><span className="whitespace-nowrap truncate font-medium text-slate-800">{val||<span className="text-slate-300">— 入力</span>}</span></div>);
                     if (col.key==="plan") return td(val?<span onClick={open} className="cursor-pointer inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200 truncate max-w-full">{val}</span>:<span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
                     if (col.key==="payment") { const c=PAYMENT_STATUS_CFG[val||"未入金"]??{}; return td(<span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${c.bg} ${c.text}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{val||"未入金"}</span>); }
                     if (col.key==="amount") return td(<span onClick={open} className="cursor-pointer text-slate-700 font-semibold hover:bg-slate-50 rounded px-1">{val?`¥${parseAmount(val).toLocaleString()}`:<span className="text-slate-300 font-normal">—</span>}</span>);
@@ -3715,7 +3715,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                 {visibleDefs.map(col => (
                   <th key={col.key}
                     onClick={() => { if(sortKey===col.key) setSortDir(d=>d==="asc"?"desc":"asc"); else{setSortKey(col.key);setSortDir("asc");} setPage(1); }}
-                    className={`${col.w||"w-[120px]"} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors bg-slate-50`}>
+                    className={`${col.w||"w-[120px]"} px-3 py-2.5 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                     <span className="flex items-center gap-1"><span className="truncate">{col.label}</span>
                       {sortKey===col.key ? <span className="text-blue-500 shrink-0">{sortDir==="asc"?"▲":"▼"}</span> : <span className="text-slate-300 shrink-0">⇅</span>}
                     </span>
@@ -3801,8 +3801,8 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
                               setPastMgmt(prev => prev.map(r => r.id===rec.id ? { ...r, lastCallDate: getToday(), updatedAt: nowIso() } : r));
                             }}
                             title="クリックでコピー（架電日を本日に更新）"
-                            className={`group flex items-center gap-1 text-left w-full transition-colors ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
-                            <span className="font-medium text-xs truncate max-w-40">{val||"—"}</span>
+                            className={`group flex items-center gap-1 text-left w-full min-w-0 transition-colors ${copiedId===rec.id ? "text-green-600" : "text-slate-800 hover:text-blue-600"}`}>
+                            <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val||"—"}</span>
                             {copiedId === rec.id
                               ? <span className="text-green-500 text-xs shrink-0">✓</span>
                               : <svg className="w-3 h-3 shrink-0 text-slate-300 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -4986,7 +4986,7 @@ export default function App() {
                         else { setSortKey(col.key); setSortDir("asc"); }
                         setPage(1);
                       }}
-                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 select-none transition-colors bg-slate-50`}>
+                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                       <span className="flex items-center gap-1">
                         <span className="truncate">{col.label}</span>
                         {sortKey === col.key
@@ -5119,9 +5119,9 @@ export default function App() {
                             <button
                               onClick={() => copyCompanyName(val, rec.id)}
                               title="クリックでコピー"
-                              className={`group flex items-center gap-1 w-full flex-wrap text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
+                              className={`group flex items-center gap-1 w-full min-w-0 text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
                               <CompanyLogo url={rec.hpSite} name={val} />
-                              <span className="font-medium text-xs truncate max-w-40">{val || "—"}</span>
+                              <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val || "—"}</span>
                               {isOrdered(rec) && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap">
                                   🛍️受注済案件
