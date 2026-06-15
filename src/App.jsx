@@ -4641,8 +4641,8 @@ export default function App() {
           <div className="bg-sky-50 border border-sky-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-sky-700 shrink-0">📞 当日再架電アラート（帰社の可能性）</span>
             {recallAlerts.slice(0,6).map(r => (
-              <button key={r.id} onClick={() => { setEditRec(r); }}
-                title="クリックで詳細を開く"
+              <button key={r.id} onClick={() => { setSearch(r.companyName); setPage(1); }}
+                title="クリックで検索に企業名を入力"
                 className="bg-sky-100 border border-sky-300 text-sky-800 hover:bg-sky-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
                 {r.companyName}（{r.absenceReason}）
               </button>
@@ -4656,8 +4656,8 @@ export default function App() {
           <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-amber-700 shrink-0">📅 次回架電日アラート</span>
             {alerts.slice(0,5).map(r => (
-              <button key={r.id} onClick={() => { setEditRec(r); }}
-                title="クリックで詳細を開く"
+              <button key={r.id} onClick={() => { setSearch(r.companyName); setPage(1); }}
+                title="クリックで検索に企業名を入力"
                 className="bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
                 {r.companyName}（{fmtDate(normDate(r.nextCallDate))}）
               </button>
