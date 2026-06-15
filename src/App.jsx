@@ -182,8 +182,23 @@ const STATUS_CFG = {
   "8.不要":            { row:"bg-purple-50",  bg:"bg-purple-100", text:"text-purple-900", border:"border-purple-600", dot:"bg-purple-800" },
   "8.当社契約":        { row:"bg-gray-100",   bg:"bg-gray-200",   text:"text-gray-800",   border:"border-gray-500",   dot:"bg-gray-700"   },
   "9.アポ獲得":        { row:"bg-red-50",     bg:"bg-red-100",    text:"text-red-900",    border:"border-red-600",    dot:"bg-red-700"    },
-  "10.リードなし":     { row:"bg-stone-100",  bg:"bg-stone-200",  text:"text-stone-600",  border:"border-stone-400",  dot:"bg-stone-500"  },
+  "リードなし":        { row:"bg-stone-100",  bg:"bg-stone-200",  text:"text-stone-600",  border:"border-stone-400",  dot:"bg-stone-500"  },
 };
+
+// ステータス別集計の表示順（冒頭の数字順 / 1.高確度を先頭・リードなしを最後尾）
+const STATUS_ORDER = [
+  "1.高確度","2.優先","3.並","4.受付カット","4.別担当架電","4.商談中",
+  "5.メール送付","6.コネクト（改）","7.コネクト（無）","8.不要","8.当社契約",
+  "9.アポ獲得","0.日程調整","未架電","リードなし",
+];
+const statusOrderIdx = s => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 998 : i; };
+
+// 「架電」プリセット（ステータス絞り込み）: コネクト（無）・並・優先・高確度
+const CALL_PRESET_STATUSES = ["7.コネクト（無）","3.並","2.優先","1.高確度"];
+
+// 当日帰社の可能性がある不在理由 / 完了扱いステータス（アラート判定用）
+const RECALL_REASONS = ["席外","午前","お昼","午後","夕方"];
+const DONE_STATUSES  = ["8.不要","8.当社契約"];
 
 // ── 再アプローチステータス ─────────────────────────────────────────────────────
 const REAPPROACH_STATUS = {
@@ -450,6 +465,19 @@ function normDate(d) {
     return `${yr}-${mdy[1].padStart(2,"0")}-${mdy[2].padStart(2,"0")}`;
   }
   return s.slice(0, 10).replace(/\//g, "-");
+}
+
+// 旧ステータス名（10.リードなし）→ 新名（リードなし）へ移行
+function migrateRecords(recs) {
+  if (!Array.isArray(recs)) return recs;
+  return recs.map(r => (r && r.status === "10.リードなし") ? { ...r, status: "リードなし" } : r);
+}
+
+// 次回架電日が架電日より前なら架電日に合わせる（架電済みなので次回は当日以降）
+function clampNextCall(r) {
+  const lc = normDate(r.lastCallDate), nc = normDate(r.nextCallDate);
+  if (lc && nc && nc < lc) return { ...r, nextCallDate: lc };
+  return r;
 }
 
 // ── StatusBadge ────────────────────────────────────────────────────────────────
@@ -1601,7 +1629,7 @@ const DUPE_PRIORITY = {
   "5.メール送付":5, "6.コネクト（改）":6, "7.コネクト（無）":7,
   "2.優先":8, "4.別担当架電":9, "4.受付カット":10,
   "8.当社契約":11, "8.不要":12, "3.並":13,
-  "10.リードなし":98, "未架電":99, "":100,
+  "リードなし":98, "未架電":99, "":100,
 };
 const dupePrio = s => DUPE_PRIORITY[s] ?? 50;
 
@@ -3944,6 +3972,7 @@ export default function App() {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電したリストを除外
   const [leadSourceFilter, setLeadSourceFilter] = useState("all"); // ソース絞り込み
+  const [alertFilter,    setAlertFilter]    = useState(null); // null | "recall" | "next"（アラート絞り込み）
   // UI 状態をまとめて localStorage から復元
   const savedUI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } })();
   const [visibleCols,    setVisibleCols]    = useState(Array.isArray(savedUI.visibleCols) && savedUI.visibleCols.length ? savedUI.visibleCols : DEFAULT_VISIBLE_COLS);
@@ -3986,11 +4015,11 @@ export default function App() {
   const loadFromLocal = useCallback(async () => {
     try {
       const recs = await idbGetAll();
-      if (recs.length > 0) return recs;
+      if (recs.length > 0) return migrateRecords(recs);
     } catch {}
     try {
       const s = localStorage.getItem(STORAGE_KEY);
-      if (s) return JSON.parse(s);
+      if (s) return migrateRecords(JSON.parse(s));
     } catch {}
     return null;
   }, []);
@@ -4012,8 +4041,9 @@ export default function App() {
       // 巻き戻し防止: 書き込みから60秒以内はポーリング上書きしない
       if (!manual && fetchStart < lastWriteRef.current + 60_000) return;
       if (Array.isArray(recs)) {
-        setRecords(recs);
-        saveToLocal(recs);
+        const migrated = migrateRecords(recs);
+        setRecords(migrated);
+        saveToLocal(migrated);
         setStorageWarning(false);
       }
     } catch (e) {
@@ -4075,8 +4105,9 @@ export default function App() {
       // API から取得 → なければローカルキャッシュ → なければ API に移行
       apiGet("records").then(async recs => {
         if (Array.isArray(recs) && recs.length > 0) {
-          setRecords(recs);
-          saveToLocal(recs);
+          const migrated = migrateRecords(recs);
+          setRecords(migrated);
+          saveToLocal(migrated);
         } else {
           // API が空: ローカルキャッシュを API にマイグレーション
           const local = await loadFromLocal();
@@ -4169,6 +4200,10 @@ export default function App() {
   }, [showColDrop]);
 
   const today = getToday();
+  const soon = (() => { const d = new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
+  // アラート判定（フィルターと表示の両方で使用）
+  const isRecallAlert = r => normDate(r.lastCallDate) === today && RECALL_REASONS.includes(r.absenceReason||"");
+  const isNextAlert   = r => r.nextCallDate && normDate(r.nextCallDate) <= soon && !DONE_STATUSES.includes(r.status);
 
   // ── Derived data ──────────────────────────────────────────────────────────────
   const filtered = records.filter(r => {
@@ -4177,6 +4212,8 @@ export default function App() {
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
     if (excludeTodayCalled && normDate(r.lastCallDate) === today) return false;
     if (leadSourceFilter !== "all" && (r.leadSource||"") !== leadSourceFilter) return false;
+    if (alertFilter === "recall" && !isRecallAlert(r)) return false;
+    if (alertFilter === "next"   && !isNextAlert(r))   return false;
     if (search) {
       const q = search;
       if (!(r.companyName||"").includes(q) && !(r.phone||"").includes(q) &&
@@ -4208,7 +4245,7 @@ export default function App() {
   useEffect(() => {
     setFrozenIds(sortedFiltered.map(r => r.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, leadSourceFilter, statusFilterSet, records.length]);
+  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, leadSourceFilter, alertFilter, statusFilterSet, records.length]);
 
   const recById = new Map(records.map(r => [r.id, r]));
   // 店舗数分析インデックス（一度だけ構築）
@@ -4222,14 +4259,13 @@ export default function App() {
 
   const statsMap = {};
   records.forEach(r => { statsMap[r.status] = (statsMap[r.status]||0) + 1; });
-  const stats = Object.entries(statsMap).map(([s,c]) => ({ status:s, count:c, ...(STATUS_CFG[s]??{}) }));
+  const stats = Object.entries(statsMap)
+    .map(([s,c]) => ({ status:s, count:c, ...(STATUS_CFG[s]??{}) }))
+    .sort((a,b) => statusOrderIdx(a.status) - statusOrderIdx(b.status));
 
-  const soon = (() => { const d = new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
-  const doneStatuses = ["8.不要","8.当社契約"];
-  const alerts   = records.filter(r => r.nextCallDate && normDate(r.nextCallDate) <= soon && !doneStatuses.includes(r.status));
+  const alerts       = records.filter(isNextAlert);
   // 当日帰社の可能性がある不在（本日架電 × 該当不在理由）→ 再架電アラート
-  const RECALL_REASONS = ["席外","午前","お昼","午後","夕方"];
-  const recallAlerts = records.filter(r => normDate(r.lastCallDate) === today && RECALL_REASONS.includes(r.absenceReason||""));
+  const recallAlerts = records.filter(isRecallAlert);
   const assignees = [...new Set(records.map(r => r.assignee).filter(Boolean))];
   // visibleCols の並び順で列を表示（未知キーは除外）
   const visibleDefs = visibleCols.map(k => ALL_COLUMNS.find(c => c.key === k)).filter(Boolean);
@@ -4441,9 +4477,9 @@ export default function App() {
   const saveRecord = useCallback(form => {
     const isEdit = records.some(r => r.id === form.id);
     if (isEdit) {
-      setRecords(p => { const next = p.map(r => r.id===form.id ? { ...r, ...form, updatedAt:nowIso() } : r); syncToAPI(next); return next; });
+      setRecords(p => { const next = p.map(r => r.id===form.id ? clampNextCall({ ...r, ...form, updatedAt:nowIso() }) : r); syncToAPI(next); return next; });
     } else {
-      setRecords(p => { const next = [...p, { ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual", leadAddedDate: form.leadAddedDate || getToday() }]; syncToAPI(next); return next; });
+      setRecords(p => { const next = [...p, clampNextCall({ ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual", leadAddedDate: form.leadAddedDate || getToday() })]; syncToAPI(next); return next; });
     }
   }, [records, syncToAPI]);
 
@@ -4464,7 +4500,7 @@ export default function App() {
     setEditingCell(null);
     const value = (key === "lastCallDate" || key === "nextCallDate") ? normDate(raw) : raw;
     setRecords(p => {
-      const next = p.map(r => r.id === id ? { ...r, [key]: value, updatedAt: nowIso() } : r);
+      const next = p.map(r => r.id === id ? clampNextCall({ ...r, [key]: value, updatedAt: nowIso() }) : r);
       syncToAPI(next);
       return next;
     });
@@ -4636,33 +4672,31 @@ export default function App() {
           </div>
         )}
 
-        {/* ── 当日再架電アラート（不在理由ベース） ── */}
-        {recallAlerts.length > 0 && (
-          <div className="bg-sky-50 border border-sky-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-sky-700 shrink-0">📞 当日再架電アラート（帰社の可能性）</span>
-            {recallAlerts.slice(0,6).map(r => (
-              <button key={r.id} onClick={() => { setSearch(r.companyName); setPage(1); }}
-                title="クリックで検索に企業名を入力"
-                className="bg-sky-100 border border-sky-300 text-sky-800 hover:bg-sky-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
-                {r.companyName}（{r.absenceReason}）
+        {/* ── アラート（小さく件数表示・押すと該当案件をリスト表示） ── */}
+        {(recallAlerts.length > 0 || alerts.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {recallAlerts.length > 0 && (
+              <button onClick={() => { setAlertFilter(f => f==="recall" ? null : "recall"); setPage(1); }}
+                title="押すと当日再架電の案件のみ表示"
+                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors
+                  ${alertFilter==="recall" ? "bg-sky-600 text-white border-sky-600" : "bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100"}`}>
+                📞 当日再架電 {recallAlerts.length}件
               </button>
-            ))}
-            {recallAlerts.length > 6 && <span className="text-xs text-sky-600">他 {recallAlerts.length-6} 件</span>}
-          </div>
-        )}
-
-        {/* ── Alert bar ── */}
-        {alerts.length > 0 && (
-          <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-amber-700 shrink-0">📅 次回架電日アラート</span>
-            {alerts.slice(0,5).map(r => (
-              <button key={r.id} onClick={() => { setSearch(r.companyName); setPage(1); }}
-                title="クリックで検索に企業名を入力"
-                className="bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
-                {r.companyName}（{fmtDate(normDate(r.nextCallDate))}）
+            )}
+            {alerts.length > 0 && (
+              <button onClick={() => { setAlertFilter(f => f==="next" ? null : "next"); setPage(1); }}
+                title="押すと次回架電日の案件のみ表示"
+                className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors
+                  ${alertFilter==="next" ? "bg-amber-600 text-white border-amber-600" : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"}`}>
+                📅 次回架電 {alerts.length}件
               </button>
-            ))}
-            {alerts.length > 5 && <span className="text-xs text-amber-600">他 {alerts.length-5} 件</span>}
+            )}
+            {alertFilter && (
+              <button onClick={() => { setAlertFilter(null); setPage(1); }}
+                className="text-xs text-slate-400 hover:text-slate-700 underline">
+                絞り込み解除
+              </button>
+            )}
           </div>
         )}
 
@@ -4686,6 +4720,12 @@ export default function App() {
                   onClick={() => { setStatusFilterSet(new Set()); setPage(1); }}
                   className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg text-slate-400 hover:bg-slate-50 transition-colors">
                   全非表示
+                </button>
+                <button
+                  onClick={() => { setStatusFilterSet(new Set(CALL_PRESET_STATUSES)); setPage(1); }}
+                  title="コネクト（無）・並・優先・高確度に絞る"
+                  className="px-2.5 py-1 text-xs border border-emerald-300 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors font-semibold">
+                  架電
                 </button>
               </div>
             </div>
