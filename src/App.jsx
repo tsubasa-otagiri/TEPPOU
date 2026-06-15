@@ -4006,6 +4006,19 @@ export default function App() {
   const toggleStatus = key => setStatusFilterSet(prev => {
     const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n;
   });
+  // アラートチップ: 押すと該当案件のみ表示。他の絞り込みが該当リードを隠さないよう解除する
+  const focusAlert = kind => {
+    const turningOn = alertFilter !== kind;
+    setAlertFilter(turningOn ? kind : null);
+    if (turningOn) {
+      setStatusFilterSet(new Set(ALL_STATUS_KEYS)); // 全表示に戻す
+      setExcludeTodayCalled(false);                 // 当日再架電は本日架電なので除外を解除
+      setAssigneeFilter("all");
+      setLeadSourceFilter("all");
+      setSearch("");
+    }
+    setPage(1);
+  };
   const [storageWarning, setStorageWarning] = useState(false);
   const colDropRef = useRef();
 
@@ -4583,11 +4596,6 @@ export default function App() {
             <span className="text-xs text-slate-500 hidden sm:block">
               総件数: <span className="font-bold text-blue-600">{records.length}</span>件
             </span>
-            {alerts.length > 0 && (
-              <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded-full border border-amber-300">
-                ⏰ {alerts.length}件アラート
-              </span>
-            )}
             {API_BASE && (
               <button onClick={() => fetchAllFromAPI({ manual: true })}
                 disabled={syncing}
@@ -4676,7 +4684,7 @@ export default function App() {
         {(recallAlerts.length > 0 || alerts.length > 0) && (
           <div className="flex flex-wrap items-center gap-2">
             {recallAlerts.length > 0 && (
-              <button onClick={() => { setAlertFilter(f => f==="recall" ? null : "recall"); setPage(1); }}
+              <button onClick={() => focusAlert("recall")}
                 title="押すと当日再架電の案件のみ表示"
                 className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors
                   ${alertFilter==="recall" ? "bg-sky-600 text-white border-sky-600" : "bg-sky-50 text-sky-700 border-sky-300 hover:bg-sky-100"}`}>
@@ -4684,7 +4692,7 @@ export default function App() {
               </button>
             )}
             {alerts.length > 0 && (
-              <button onClick={() => { setAlertFilter(f => f==="next" ? null : "next"); setPage(1); }}
+              <button onClick={() => focusAlert("next")}
                 title="押すと次回架電日の案件のみ表示"
                 className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors
                   ${alertFilter==="next" ? "bg-amber-600 text-white border-amber-600" : "bg-amber-50 text-amber-700 border-amber-300 hover:bg-amber-100"}`}>
