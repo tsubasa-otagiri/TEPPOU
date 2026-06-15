@@ -4227,6 +4227,9 @@ export default function App() {
   const soon = (() => { const d = new Date(); d.setDate(d.getDate()+3); return d.toISOString().slice(0,10); })();
   const doneStatuses = ["8.不要","8.当社契約"];
   const alerts   = records.filter(r => r.nextCallDate && normDate(r.nextCallDate) <= soon && !doneStatuses.includes(r.status));
+  // 当日帰社の可能性がある不在（本日架電 × 該当不在理由）→ 再架電アラート
+  const RECALL_REASONS = ["席外","午前","お昼","午後","夕方"];
+  const recallAlerts = records.filter(r => normDate(r.lastCallDate) === today && RECALL_REASONS.includes(r.absenceReason||""));
   const assignees = [...new Set(records.map(r => r.assignee).filter(Boolean))];
   // visibleCols の並び順で列を表示（未知キーは除外）
   const visibleDefs = visibleCols.map(k => ALL_COLUMNS.find(c => c.key === k)).filter(Boolean);
@@ -4633,14 +4636,31 @@ export default function App() {
           </div>
         )}
 
+        {/* ── 当日再架電アラート（不在理由ベース） ── */}
+        {recallAlerts.length > 0 && (
+          <div className="bg-sky-50 border border-sky-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-sky-700 shrink-0">📞 当日再架電アラート（帰社の可能性）</span>
+            {recallAlerts.slice(0,6).map(r => (
+              <button key={r.id} onClick={() => { setEditRec(r); }}
+                title="クリックで詳細を開く"
+                className="bg-sky-100 border border-sky-300 text-sky-800 hover:bg-sky-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
+                {r.companyName}（{r.absenceReason}）
+              </button>
+            ))}
+            {recallAlerts.length > 6 && <span className="text-xs text-sky-600">他 {recallAlerts.length-6} 件</span>}
+          </div>
+        )}
+
         {/* ── Alert bar ── */}
         {alerts.length > 0 && (
           <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-amber-700 shrink-0">📅 次回架電日アラート</span>
             {alerts.slice(0,5).map(r => (
-              <span key={r.id} className="bg-amber-100 border border-amber-300 text-amber-800 text-xs px-2 py-0.5 rounded-full">
+              <button key={r.id} onClick={() => { setEditRec(r); }}
+                title="クリックで詳細を開く"
+                className="bg-amber-100 border border-amber-300 text-amber-800 hover:bg-amber-200 text-xs px-2 py-0.5 rounded-full transition-colors cursor-pointer">
                 {r.companyName}（{fmtDate(normDate(r.nextCallDate))}）
-              </span>
+              </button>
             ))}
             {alerts.length > 5 && <span className="text-xs text-amber-600">他 {alerts.length-5} 件</span>}
           </div>
@@ -4813,7 +4833,13 @@ export default function App() {
               <input type="text" value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
                 placeholder="企業名・電話番号・担当者・メモで検索..."
-                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                className="w-full pl-9 pr-9 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              {search && (
+                <button onClick={() => { setSearch(""); setPage(1); }} title="クリア"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-slate-200 hover:bg-slate-300 text-slate-600 text-xs transition-colors">
+                  ×
+                </button>
+              )}
             </div>
             {/* ソース絞り込み */}
             <select value={leadSourceFilter} onChange={e => { setLeadSourceFilter(e.target.value); setPage(1); }}
