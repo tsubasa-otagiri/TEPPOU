@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from "react";
 import * as XLSX from "xlsx";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -479,6 +479,41 @@ function clampNextCall(r) {
   if (lc && nc && nc < lc) return { ...r, nextCallDate: lc };
   return r;
 }
+
+// URL → ドメイン（www除去）。ファビコン取得用
+function faviconDomain(url) {
+  if (!url) return "";
+  try {
+    let s = String(url).trim();
+    if (!s) return "";
+    if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+    const host = new URL(s).hostname.replace(/^www\./, "");
+    // 正当なドメイン形式のみ採用（スペースや不正文字を含む入力は除外 → 🏢にフォールバック）
+    return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+$/i.test(host) ? host : "";
+  } catch { return ""; }
+}
+
+// ── CompanyLogo ────────────────────────────────────────────────────────────────
+// HPサイトURLからGoogleファビコンAPIで企業ロゴをリアルタイム表示（画像は保存しない）。
+// 未入力／読み込み失敗時は🏢にフォールバック。サイズ完全固定でガタつきゼロ・遅延読み込み。
+const CompanyLogo = memo(function CompanyLogo({ url }) {
+  const domain = faviconDomain(url);
+  const [failed, setFailed] = useState(false);
+  if (!domain || failed) {
+    return (
+      <span className="w-4 h-4 rounded shadow-sm flex-shrink-0 inline-flex items-center justify-center bg-slate-100 text-[10px] leading-none select-none" aria-hidden="true">🏢</span>
+    );
+  }
+  return (
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="w-4 h-4 rounded shadow-sm flex-shrink-0 object-contain bg-white"
+    />
+  );
+});
 
 // ── StatusBadge ────────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
@@ -1818,7 +1853,10 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
             {/* 企業情報 */}
             <SectionLabel>企業情報</SectionLabel>
             <div className="col-span-2">
-              <label className="block text-xs text-slate-500 mb-1">企業名 <span className="text-rose-500">*</span></label>
+              <label className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                <CompanyLogo url={form.hpSite} />
+                企業名 <span className="text-rose-500">*</span>
+              </label>
               <input type="text" value={form.companyName} autoFocus
                 onChange={e => upd("companyName", e.target.value)}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -3309,7 +3347,7 @@ function OrderView({ orders, setOrders, members }) {
                       if (col.key==="memo") return td(<textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/>);
                       return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
                     }
-                    if (col.key==="companyName") return td(<div onClick={open} className="truncate font-medium text-slate-800 cursor-pointer hover:text-blue-600" title={String(val||"")}>{val||<span className="text-slate-300">— 入力</span>}</div>);
+                    if (col.key==="companyName") return td(<div onClick={open} className="flex items-center gap-1 cursor-pointer hover:text-blue-600" title={String(val||"")}><CompanyLogo url={o.hpSite} /><span className="truncate font-medium text-slate-800">{val||<span className="text-slate-300">— 入力</span>}</span></div>);
                     if (col.key==="plan") return td(val?<span onClick={open} className="cursor-pointer inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200 truncate max-w-full">{val}</span>:<span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
                     if (col.key==="payment") { const c=PAYMENT_STATUS_CFG[val||"未入金"]??{}; return td(<span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${c.bg} ${c.text}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{val||"未入金"}</span>); }
                     if (col.key==="amount") return td(<span onClick={open} className="cursor-pointer text-slate-700 font-semibold hover:bg-slate-50 rounded px-1">{val?`¥${parseAmount(val).toLocaleString()}`:<span className="text-slate-300 font-normal">—</span>}</span>);
@@ -5060,6 +5098,7 @@ export default function App() {
                               onClick={() => copyCompanyName(val, rec.id)}
                               title="クリックでコピー"
                               className={`group flex items-center gap-1 w-full flex-wrap text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
+                              <CompanyLogo url={rec.hpSite} />
                               <span className="font-medium text-xs truncate max-w-40">{val || "—"}</span>
                               {isOrdered(rec) && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap">
