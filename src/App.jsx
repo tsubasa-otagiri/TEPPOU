@@ -505,6 +505,31 @@ function clearbitDomain(logoUrl) {
   const m = typeof logoUrl === "string" && logoUrl.match(/^https:\/\/logo\.clearbit\.com\/(.+)$/i);
   return m ? m[1] : "";
 }
+// 自動生成（Google/Clearbitファビコン）URLか判定
+function isAutoFaviconUrl(u) {
+  return typeof u === "string" && /^https:\/\/(www\.google\.com\/s2\/favicons|logo\.clearbit\.com)/i.test(u);
+}
+
+// 大手企業のロゴ・キュレーション（店舗数の多い主要企業に公式ファビコンのリンクを付与）。
+// ハイフン・空白の表記揺れを吸収して企業名で照合。手動設定ロゴは尊重して上書きしない。
+const KNOWN_LOGOS = [
+  { kw: ["東京海上"],                         domain: "tokiomarine-nichido.co.jp" },
+  { kw: ["日本郵便"],                         domain: "post.japanpost.jp" },
+  { kw: ["セブンイレブン"],                   domain: "sej.co.jp" },
+  { kw: ["タイムズ"],                         domain: "times24.co.jp" },
+  { kw: ["ファミリーマート"],                 domain: "family.co.jp" },
+  { kw: ["公文"],                             domain: "kumon.ne.jp" },
+  { kw: ["ローソン"],                         domain: "lawson.co.jp" },
+  { kw: ["eMobilityPower", "モビリティパワー"], domain: "e-mobipower.co.jp" },
+];
+const stripLogoKey = s => String(s || "").replace(/[\s　\-‐‑‒–—―－]/g, "");
+function matchKnownLogo(name) {
+  const n = stripLogoKey(name);
+  for (const e of KNOWN_LOGOS) {
+    if (e.kw.some(k => n.includes(stripLogoKey(k)))) return googleFavicon(e.domain);
+  }
+  return null;
+}
 
 // 頭文字アバターの配色パレット（フルクラス文字列＝TailwindのJITに確実に含める）
 const AVATAR_COLORS = [
@@ -4207,13 +4232,19 @@ export default function App() {
   // logoUrl が既にあるレコードは触らないので、確定後はこの処理は何もしない（無限ループなし）。
   useEffect(() => {
     if (!records.length) return;
-    // 手動ロゴ運用へ移行: 自動生成（Google/Clearbitファビコン）のlogo_urlを一度だけクリアし白紙化。
-    // 手動の画像（data:）やユーザーが入力した任意URLはそのまま維持。
+    // ロゴ運用: 大手企業（KNOWN_LOGOS）には公式ファビコンのリンクを付与。
+    // それ以外の自動生成ファビコンは白紙化。手動ロゴ（data:や任意URL）は尊重して維持。
     let changed = false;
-    const isAutoFavicon = u => typeof u === "string" &&
-      /^https:\/\/(www\.google\.com\/s2\/favicons|logo\.clearbit\.com)/i.test(u);
     const next = records.map(r => {
-      if (isAutoFavicon(r.logoUrl)) { changed = true; return { ...r, logoUrl: "" }; }
+      const known = matchKnownLogo(r.companyName);
+      if (known) {
+        if (r.logoUrl === known) return r;                          // 付与済み → 変更なし
+        if (!r.logoUrl || isAutoFaviconUrl(r.logoUrl)) {            // 未設定 or 旧自動 → 付与
+          changed = true; return { ...r, logoUrl: known };
+        }
+        return r;                                                   // 手動ロゴあり → 尊重
+      }
+      if (isAutoFaviconUrl(r.logoUrl)) { changed = true; return { ...r, logoUrl: "" }; } // 大手以外の自動は白紙化
       return r;
     });
     if (changed) { setRecords(next); syncToAPI(next); }
