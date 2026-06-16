@@ -525,30 +525,23 @@ function avatarColor(name) {
 }
 
 // ── CompanyLogo ────────────────────────────────────────────────────────────────
-// 保存済み logoUrl を最優先（再解析・外部アクセスなしで即表示）。無ければ hpSite の
-// ドメインから Clearbit ロゴURLを安全に導出。URL未入力／文字列以外／読み込み失敗時は
-// 企業名の頭文字を色分けアバターに自動フォールバック（バグ落ち100%防止）。
+// 企業ロゴは手動登録のみ（URL／画像アップロード／Ctrl+V貼り付けのBase64）。自動取得なし。
+// 未登録・読み込み失敗時は中身なしの「白紙（無地枠）」を表示（頭文字アバターは表示しない）。
 // 枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
-const CompanyLogo = memo(function CompanyLogo({ logoUrl, url, name }) {
-  const domain = logoUrl ? null : faviconDomain(url);
-  const src = logoUrl || (domain ? googleFavicon(domain) : null);
-  // 失敗したsrcを記録（行の使い回しで別ドメインに変わっても誤フォールバックしない）
+const CompanyLogo = memo(function CompanyLogo({ logoUrl }) {
+  // 失敗したsrcを記録（行の使い回しで別レコードに変わっても誤表示しない）
   const [errSrc, setErrSrc] = useState(null);
-  const showImg = src && errSrc !== src;
+  const showImg = logoUrl && errSrc !== logoUrl;
   return (
     <span className="w-6 h-6 rounded bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm p-0.5">
-      {showImg ? (
+      {showImg && (
         <img
-          src={src}
+          src={logoUrl}
           alt=""
           loading="lazy"
-          onError={() => setErrSrc(src)}
+          onError={() => setErrSrc(logoUrl)}
           className="w-full h-full object-contain"
         />
-      ) : (
-        <span className={`w-full h-full rounded inline-flex items-center justify-center text-xs leading-none font-bold font-mono ${avatarColor(name)}`} aria-hidden="true">
-          {(String(name || "").trim().charAt(0) || "?").toUpperCase()}
-        </span>
       )}
     </span>
   );
@@ -1919,6 +1912,31 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
         <div className="overflow-y-auto flex-1 px-6 py-4">
           <div className="grid grid-cols-2 gap-3">
 
+            {/* 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）— 最上段 */}
+            <div className="col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">🌐 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）</label>
+              <div className="flex items-center gap-2">
+                <CompanyLogo logoUrl={form.logoUrl} />
+                <input type="text" value={form.logoUrl || ""}
+                  onChange={e => upd("logoUrl", e.target.value)}
+                  placeholder="https://... または画像を貼り付け／アップロード（未登録は白紙）"
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { onImagePicked(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                <button type="button" onClick={() => logoFileRef.current && logoFileRef.current.click()}
+                  className="px-2.5 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                  🖼️ 画像
+                </button>
+                {form.logoUrl && (
+                  <button type="button" onClick={() => upd("logoUrl", "")}
+                    className="px-2.5 py-2 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap">
+                    クリア
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">画像は <strong>Ctrl+V</strong> でこのモーダルに直接貼り付け、または「🖼️ 画像」から選択できます。<strong>24×24px</strong> に圧縮して保存します（URL手入力も可）。未登録の場合は白紙の枠を表示します。</p>
+            </div>
+
             {/* 企業情報 */}
             <SectionLabel>企業情報</SectionLabel>
             <div className="col-span-2">
@@ -1999,30 +2017,6 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
             {/* Web / GBP */}
             <SectionLabel>Web / GBP</SectionLabel>
             {txt("hpSite",        "HPサイト",   2)}
-            {/* 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）個別修正 */}
-            <div className="col-span-2">
-              <label className="block text-xs text-slate-500 mb-1">🌐 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）</label>
-              <div className="flex items-center gap-2">
-                <CompanyLogo logoUrl={form.logoUrl} url={form.hpSite} name={form.companyName} />
-                <input type="text" value={form.logoUrl || ""}
-                  onChange={e => upd("logoUrl", e.target.value)}
-                  placeholder="https://... または画像を貼り付け／アップロード（空欄でHPから自動取得）"
-                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
-                  onChange={e => { onImagePicked(e.target.files && e.target.files[0]); e.target.value = ""; }} />
-                <button type="button" onClick={() => logoFileRef.current && logoFileRef.current.click()}
-                  className="px-2.5 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap">
-                  🖼️ 画像
-                </button>
-                {form.logoUrl && (
-                  <button type="button" onClick={() => upd("logoUrl", "")}
-                    className="px-2.5 py-2 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap">
-                    クリア
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1">画像は <strong>Ctrl+V</strong> でこのモーダルに直接貼り付け、または「🖼️ 画像」から選択できます。<strong>24×24px</strong> に圧縮して保存します（URL手入力も可）。「クリア」で空欄にするとHPサイトから自動取得に戻ります。</p>
-            </div>
             {txt("gbp",           "GBP")}
             {txt("gbpManagement", "GBPの管理")}
             {txt("gbpSiteUrl",    "GBPサイトURL", 2)}
@@ -4213,16 +4207,14 @@ export default function App() {
   // logoUrl が既にあるレコードは触らないので、確定後はこの処理は何もしない（無限ループなし）。
   useEffect(() => {
     if (!records.length) return;
+    // 手動ロゴ運用へ移行: 自動生成（Google/Clearbitファビコン）のlogo_urlを一度だけクリアし白紙化。
+    // 手動の画像（data:）やユーザーが入力した任意URLはそのまま維持。
     let changed = false;
+    const isAutoFavicon = u => typeof u === "string" &&
+      /^https:\/\/(www\.google\.com\/s2\/favicons|logo\.clearbit\.com)/i.test(u);
     const next = records.map(r => {
-      // 旧Clearbit自動ロゴ → Google高画質ファビコンへ一度だけ移行
-      const cbDomain = clearbitDomain(r.logoUrl);
-      if (cbDomain) { changed = true; return { ...r, logoUrl: googleFavicon(cbDomain) }; }
-      if (r.logoUrl || !r.hpSite) return r;          // 確定済み or URL無 → 触らない
-      const d = faviconDomain(r.hpSite);             // 型チェック・不正値ガードは faviconDomain 内
-      if (!d) return r;                              // ドメイン抽出不可 → 触らない（アバター表示）
-      changed = true;
-      return { ...r, logoUrl: googleFavicon(d) };
+      if (isAutoFavicon(r.logoUrl)) { changed = true; return { ...r, logoUrl: "" }; }
+      return r;
     });
     if (changed) { setRecords(next); syncToAPI(next); }
   }, [records, syncToAPI]);
