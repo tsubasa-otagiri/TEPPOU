@@ -262,9 +262,9 @@ const ALL_COLUMNS = [
   { key:"companyName",   label:"企業名",                              required:true,  w:"w-[184px]" },
   { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[96px]"  },
   { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[104px]" },
-  { key:"status",        label:"状況",                                required:false, w:"w-[112px]" },
+  { key:"status",        label:"状況",                                required:false, w:"w-[140px]" },
   { key:"industry",      label:"業種",                                required:false, w:"w-[88px]"  },
-  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[92px]"  },
+  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[120px]" },
   { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[100px]" },
   { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[120px]" },
   { key:"gbp",           label:"GBP",                                 required:false, w:"w-[68px]"  },
@@ -292,7 +292,7 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","absenceReason","importMonth","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","absenceReason","storeCount","phone","assignee","memo",
 ];
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -5058,7 +5058,7 @@ export default function App() {
 
         {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-y-auto overflow-x-hidden max-h-[calc(100vh-280px)]">
+          <div className="overflow-auto max-h-[calc(100vh-280px)]">
           <table className="w-full text-sm border-collapse table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                 <tr>
@@ -5075,7 +5075,7 @@ export default function App() {
                         else { setSortKey(col.key); setSortDir("asc"); }
                         setPage(1);
                       }}
-                      className={`${col.key==="companyName" ? "w-[17%]" : col.key==="memo" ? "w-[15%]" : ""} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
+                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                       <span className="flex items-center gap-1">
                         <span className="truncate">{col.label}</span>
                         {sortKey === col.key
