@@ -4237,13 +4237,10 @@ export default function App() {
       if (r.logoUrl) return r;                          // 既存ロゴは消さない・上書きしない
       const known = matchKnownLogo(r.companyName);      // 大手はキュレーションのファビコン
       if (known) { changed = true; return { ...r, logoUrl: known }; }
-      // 100店舗以上の企業は、HPサイト（hpSite）のドメインからそのサイトのファビコンを付与
-      const stores = parseInt(String(r.storeCount || "").replace(/[^\d]/g, ""), 10) || 0;
-      if (stores >= 100) {
-        const d = faviconDomain(r.hpSite);
-        if (d) { changed = true; return { ...r, logoUrl: googleFavicon(d) }; }
-      }
-      return r;                                         // それ以外は白紙のまま
+      // 店舗数に関わらず、HPサイト（hpSite）のドメインからそのサイトのファビコンを付与
+      const d = faviconDomain(r.hpSite);
+      if (d) { changed = true; return { ...r, logoUrl: googleFavicon(d) }; }
+      return r;                                         // HPサイト未入力は白紙のまま
     });
     if (changed) { setRecords(next); syncToAPI(next); }
   }, [records, syncToAPI]);
