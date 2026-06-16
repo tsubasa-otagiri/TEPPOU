@@ -1865,6 +1865,36 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
     ...initial,
   });
   const upd = (k,v) => setForm(f => ({ ...f, [k]:v }));
+  const logoFileRef = useRef();
+  // 取り込んだ画像をCanvasで24×24pxに圧縮しBase64でlogo_urlへ固定保存（容量極小）
+  const onImagePicked = useCallback((file) => {
+    if (!file || !file.type || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 24; c.height = 24;
+        const ctx = c.getContext("2d");
+        ctx.clearRect(0, 0, 24, 24);
+        ctx.drawImage(img, 0, 0, 24, 24);
+        try { setForm(f => ({ ...f, logoUrl: c.toDataURL("image/png") })); } catch {}
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }, []);
+  // モーダル内で Ctrl+V → クリップボードの画像を取り込み（画像が無ければ通常の貼り付けを許可）
+  const onModalPaste = useCallback((e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) {
+        const file = it.getAsFile();
+        if (file) { e.preventDefault(); onImagePicked(file); return; }
+      }
+    }
+  }, [onImagePicked]);
   const txt = (key, label, colSpan=1, type="text") => (
     <div className={colSpan===2 ? "col-span-2" : ""}>
       <label className="block text-xs text-slate-500 mb-1">{label}</label>
@@ -1880,7 +1910,7 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
   );
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onPaste={onModalPaste}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[92vh]">
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <h2 className="text-base font-bold text-slate-800">{title}</h2>
@@ -1969,23 +1999,29 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
             {/* Web / GBP */}
             <SectionLabel>Web / GBP</SectionLabel>
             {txt("hpSite",        "HPサイト",   2)}
-            {/* 企業ロゴURL（ファビコン）個別修正 */}
+            {/* 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）個別修正 */}
             <div className="col-span-2">
-              <label className="block text-xs text-slate-500 mb-1">🌐 企業ロゴURL（ファビコンURL）</label>
+              <label className="block text-xs text-slate-500 mb-1">🌐 企業ロゴ（URL / 画像アップロード / Ctrl+V貼り付け）</label>
               <div className="flex items-center gap-2">
                 <CompanyLogo logoUrl={form.logoUrl} url={form.hpSite} name={form.companyName} />
                 <input type="text" value={form.logoUrl || ""}
                   onChange={e => upd("logoUrl", e.target.value)}
-                  placeholder="https://logo.clearbit.com/example.com（空欄ならHPサイトから自動取得）"
+                  placeholder="https://... または画像を貼り付け／アップロード（空欄でHPから自動取得）"
                   className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+                  onChange={e => { onImagePicked(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+                <button type="button" onClick={() => logoFileRef.current && logoFileRef.current.click()}
+                  className="px-2.5 py-2 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap">
+                  🖼️ 画像
+                </button>
                 {form.logoUrl && (
                   <button type="button" onClick={() => upd("logoUrl", "")}
                     className="px-2.5 py-2 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap">
-                    自動に戻す
+                    クリア
                   </button>
                 )}
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">手動入力すると保存後この値が最優先で固定表示されます。「自動に戻す」で空欄にするとHPサイトから再取得します。</p>
+              <p className="text-[11px] text-slate-400 mt-1">画像は <strong>Ctrl+V</strong> でこのモーダルに直接貼り付け、または「🖼️ 画像」から選択できます。<strong>24×24px</strong> に圧縮して保存します（URL手入力も可）。「クリア」で空欄にするとHPサイトから自動取得に戻ります。</p>
             </div>
             {txt("gbp",           "GBP")}
             {txt("gbpManagement", "GBPの管理")}
