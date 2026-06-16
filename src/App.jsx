@@ -5278,13 +5278,14 @@ export default function App() {
                               onClick={() => copyCompanyName(val, rec.id)}
                               title="クリックでコピー"
                               className={`group flex items-center gap-1 w-full min-w-0 text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
-                              <CompanyLogo logoUrl={rec.logoUrl} url={rec.hpSite} name={val} />
-                              <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val || "—"}</span>
                               {isOrdered(rec) && (
-                                <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap">
-                                  🛍️受注済案件
+                                <span title="受注済案件"
+                                  className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded bg-emerald-100 text-emerald-700 border border-emerald-300 text-[10px] leading-none">
+                                  🛍️
                                 </span>
                               )}
+                              <CompanyLogo logoUrl={rec.logoUrl} url={rec.hpSite} name={val} />
+                              <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val || "—"}</span>
                               {pd && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700 border border-purple-300 whitespace-nowrap">
                                   📜{pd.pastStatus || "過去商談あり"}
