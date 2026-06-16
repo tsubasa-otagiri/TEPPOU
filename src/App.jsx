@@ -4228,24 +4228,22 @@ export default function App() {
     });
   }, [saveToLocal]);
 
-  // 企業ロゴURLを「初回のみ」レコードに確定保存（以降は再解析・再取得なしの超軽量化）。
-  // logoUrl が既にあるレコードは触らないので、確定後はこの処理は何もしない（無限ループなし）。
+  // 企業ロゴURLを「初回のみ」レコードに付与（以降は触らない超軽量化）。
+  // 既にロゴが入っているレコードは一切変更しない（消さない・上書きしない）。
   useEffect(() => {
     if (!records.length) return;
-    // ロゴ運用: 大手企業（KNOWN_LOGOS）には公式ファビコンのリンクを付与。
-    // それ以外の自動生成ファビコンは白紙化。手動ロゴ（data:や任意URL）は尊重して維持。
     let changed = false;
     const next = records.map(r => {
-      const known = matchKnownLogo(r.companyName);
-      if (known) {
-        if (r.logoUrl === known) return r;                          // 付与済み → 変更なし
-        if (!r.logoUrl || isAutoFaviconUrl(r.logoUrl)) {            // 未設定 or 旧自動 → 付与
-          changed = true; return { ...r, logoUrl: known };
-        }
-        return r;                                                   // 手動ロゴあり → 尊重
+      if (r.logoUrl) return r;                          // 既存ロゴは消さない・上書きしない
+      const known = matchKnownLogo(r.companyName);      // 大手はキュレーションのファビコン
+      if (known) { changed = true; return { ...r, logoUrl: known }; }
+      // 100店舗以上の企業は、HPサイト（hpSite）のドメインからそのサイトのファビコンを付与
+      const stores = parseInt(String(r.storeCount || "").replace(/[^\d]/g, ""), 10) || 0;
+      if (stores >= 100) {
+        const d = faviconDomain(r.hpSite);
+        if (d) { changed = true; return { ...r, logoUrl: googleFavicon(d) }; }
       }
-      if (isAutoFaviconUrl(r.logoUrl)) { changed = true; return { ...r, logoUrl: "" }; } // 大手以外の自動は白紙化
-      return r;
+      return r;                                         // それ以外は白紙のまま
     });
     if (changed) { setRecords(next); syncToAPI(next); }
   }, [records, syncToAPI]);
