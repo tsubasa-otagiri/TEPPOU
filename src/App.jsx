@@ -5009,8 +5009,8 @@ export default function App() {
 
         {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-280px)]">
-          <table className="text-sm border-collapse table-fixed">
+          <div className="overflow-y-auto overflow-x-hidden max-h-[calc(100vh-280px)]">
+          <table className="w-full text-sm border-collapse table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                 <tr>
                   <th className="w-[44px] px-3 py-3 text-left bg-slate-50">
@@ -5026,7 +5026,7 @@ export default function App() {
                         else { setSortKey(col.key); setSortDir("asc"); }
                         setPage(1);
                       }}
-                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
+                      className={`${col.key==="companyName" ? "w-[17%]" : col.key==="memo" ? "w-[15%]" : ""} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                       <span className="flex items-center gap-1">
                         <span className="truncate">{col.label}</span>
                         {sortKey === col.key
