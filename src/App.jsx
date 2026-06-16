@@ -510,25 +510,71 @@ function isAutoFaviconUrl(u) {
   return typeof u === "string" && /^https:\/\/(www\.google\.com\/s2\/favicons|logo\.clearbit\.com)/i.test(u);
 }
 
-// 大手企業のロゴ・キュレーション（店舗数の多い主要企業に公式ファビコンのリンクを付与）。
-// ハイフン・空白の表記揺れを吸収して企業名で照合。手動設定ロゴは尊重して上書きしない。
+// 大手・多店舗企業のドメイン・キュレーション（店舗数の多い主要チェーン）。
+// ハイフン・空白の表記揺れを吸収して企業名で照合。HP・ロゴが未設定の場合のみ補完する。
 const KNOWN_LOGOS = [
-  { kw: ["東京海上"],                         domain: "tokiomarine-nichido.co.jp" },
-  { kw: ["日本郵便"],                         domain: "post.japanpost.jp" },
-  { kw: ["セブンイレブン"],                   domain: "sej.co.jp" },
-  { kw: ["タイムズ"],                         domain: "times24.co.jp" },
-  { kw: ["ファミリーマート"],                 domain: "family.co.jp" },
-  { kw: ["公文"],                             domain: "kumon.ne.jp" },
-  { kw: ["ローソン"],                         domain: "lawson.co.jp" },
-  { kw: ["eMobilityPower", "モビリティパワー"], domain: "e-mobipower.co.jp" },
+  // 既存
+  { kw: ["東京海上"],                            domain: "tokiomarine-nichido.co.jp" },
+  { kw: ["日本郵便"],                            domain: "post.japanpost.jp" },
+  { kw: ["セブンイレブン"],                      domain: "sej.co.jp" },
+  { kw: ["タイムズ"],                            domain: "times24.co.jp" },
+  { kw: ["ファミリーマート"],                    domain: "family.co.jp" },
+  { kw: ["公文"],                                domain: "kumon.ne.jp" },
+  { kw: ["ローソン"],                            domain: "lawson.co.jp" },
+  { kw: ["eMobilityPower", "モビリティパワー"],  domain: "e-mobipower.co.jp" },
+  // コンビニ
+  { kw: ["ミニストップ"],                        domain: "ministop.co.jp" },
+  { kw: ["セイコーマート", "セコマ"],            domain: "seicomart.co.jp" },
+  // 飲食チェーン
+  { kw: ["マクドナルド"],                        domain: "mcdonalds.co.jp" },
+  { kw: ["モスバーガー", "モスフード"],          domain: "mos.jp" },
+  { kw: ["ケンタッキー"],                        domain: "kfc.co.jp" },
+  { kw: ["すき家"],                              domain: "sukiya.jp" },
+  { kw: ["吉野家"],                              domain: "yoshinoya.com" },
+  { kw: ["松屋フーズ"],                          domain: "matsuyafoods.co.jp" },
+  { kw: ["ドトール"],                            domain: "doutor.co.jp" },
+  { kw: ["スターバックス"],                      domain: "starbucks.co.jp" },
+  { kw: ["サイゼリヤ"],                          domain: "saizeriya.co.jp" },
+  { kw: ["すかいらーく", "ガスト"],              domain: "skylark.co.jp" },
+  { kw: ["丸亀製麺", "トリドール"],              domain: "toridoll.com" },
+  { kw: ["くら寿司"],                            domain: "kurasushi.co.jp" },
+  { kw: ["スシロー"],                            domain: "akindo-sushiro.co.jp" },
+  { kw: ["はま寿司"],                            domain: "hama-sushi.co.jp" },
+  { kw: ["壱番屋"],                              domain: "ichibanya.co.jp" },
+  { kw: ["餃子の王将", "王将フード"],            domain: "ohsho.co.jp" },
+  // ドラッグストア
+  { kw: ["マツモトキヨシ", "マツキヨ", "ココカラファイン"], domain: "matsukiyococokara.com" },
+  { kw: ["ウエルシア"],                          domain: "welcia.co.jp" },
+  { kw: ["ツルハ"],                              domain: "tsuruha.co.jp" },
+  { kw: ["スギ薬局"],                            domain: "sugi-net.jp" },
+  { kw: ["サンドラッグ"],                        domain: "sundrug.co.jp" },
+  // 小売・量販・100均・アパレル
+  { kw: ["ユニクロ", "ファーストリテイリング"],  domain: "uniqlo.com" },
+  { kw: ["無印良品", "良品計画"],                domain: "muji.com" },
+  { kw: ["ニトリ"],                              domain: "nitori.co.jp" },
+  { kw: ["しまむら"],                            domain: "shimamura.gr.jp" },
+  { kw: ["大創産業", "ダイソー"],                domain: "daiso-sangyo.co.jp" },
+  { kw: ["セリア"],                              domain: "seria-group.com" },
+  { kw: ["エディオン"],                          domain: "edion.co.jp" },
+  { kw: ["ビックカメラ"],                        domain: "biccamera.co.jp" },
+  { kw: ["ヨドバシ"],                            domain: "yodobashi.com" },
+  { kw: ["ドンキホーテ", "パンパシフィック"],    domain: "donki.com" },
+  { kw: ["イトーヨーカ"],                        domain: "itoyokado.co.jp" },
+  // エネルギー
+  { kw: ["ENEOS", "エネオス"],                   domain: "eneos.co.jp" },
+  { kw: ["出光"],                                domain: "idemitsu.com" },
 ];
 const stripLogoKey = s => String(s || "").replace(/[\s　\-‐‑‒–—―－]/g, "");
-function matchKnownLogo(name) {
+function matchKnownDomain(name) {
   const n = stripLogoKey(name);
   for (const e of KNOWN_LOGOS) {
-    if (e.kw.some(k => n.includes(stripLogoKey(k)))) return googleFavicon(e.domain);
+    if (e.kw.some(k => n.includes(stripLogoKey(k)))) return e.domain;
   }
-  return null;
+  return "";
+}
+function matchKnownLogo(name) {
+  const d = matchKnownDomain(name);
+  return d ? googleFavicon(d) : null;
 }
 
 // 頭文字アバターの配色パレット（フルクラス文字列＝TailwindのJITに確実に含める）
@@ -4234,13 +4280,18 @@ export default function App() {
     if (!records.length) return;
     let changed = false;
     const next = records.map(r => {
-      if (r.logoUrl) return r;                          // 既存ロゴは消さない・上書きしない
-      const known = matchKnownLogo(r.companyName);      // 大手はキュレーションのファビコン
-      if (known) { changed = true; return { ...r, logoUrl: known }; }
-      // 店舗数に関わらず、HPサイト（hpSite）のドメインからそのサイトのファビコンを付与
-      const d = faviconDomain(r.hpSite);
-      if (d) { changed = true; return { ...r, logoUrl: googleFavicon(d) }; }
-      return r;                                         // HPサイト未入力は白紙のまま
+      if (r.logoUrl) return r;                               // 既にロゴありの企業は一切触らない（邪魔しない）
+      const knownDomain = matchKnownDomain(r.companyName);   // 大手・多店舗チェーンの既知ドメイン
+      let nr = r, ch = false;
+      // HP未入力かつ既知企業 → そのチェーンのHPを補完（既存HPは上書きしない）
+      if (knownDomain && !String(r.hpSite || "").trim()) {
+        nr = { ...nr, hpSite: `https://${knownDomain}/` }; ch = true;
+      }
+      // ロゴを付与（HPサイトのドメイン優先、なければ既知ドメイン）
+      const d = faviconDomain(nr.hpSite) || knownDomain;
+      if (d) { nr = { ...nr, logoUrl: googleFavicon(d) }; ch = true; }
+      if (ch) changed = true;
+      return nr;
     });
     if (changed) { setRecords(next); syncToAPI(next); }
   }, [records, syncToAPI]);
