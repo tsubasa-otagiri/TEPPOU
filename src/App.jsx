@@ -5319,8 +5319,15 @@ export default function App() {
                       }
 
                       return (
-                        <td key={col.key} className={`${col.w||"w-[120px]"} px-3 py-2 overflow-hidden whitespace-nowrap align-middle`}>
-                          <div className="truncate">{isEditing ? editEl : viewEl}</div>
+                        <td key={col.key} className={`${col.w||"w-[120px]"} px-3 py-2 whitespace-nowrap align-middle ${isEditing ? "relative" : "overflow-hidden"}`}>
+                          {isEditing ? (
+                            // 編集時はクリップせず、フロート表示で入力欄を最大表示（日付ピッカーも表示）
+                            <div className="absolute z-30 left-1 top-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl ring-1 ring-blue-300 p-1.5 min-w-[200px] w-max max-w-[360px]">
+                              {editEl}
+                            </div>
+                          ) : (
+                            <div className="truncate">{viewEl}</div>
+                          )}
                         </td>
                       );
                     })}
