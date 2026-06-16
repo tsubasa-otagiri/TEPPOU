@@ -257,37 +257,38 @@ const ABSENCE_REASON_CFG = {
   "着拒？":  { bg:"bg-rose-200",   text:"text-rose-800",   dot:"bg-rose-500"   },
 };
 
+// 列幅は1画面に収まるようタイトに最適化（table-fixed + truncate でガタつきゼロ）
 const ALL_COLUMNS = [
-  { key:"companyName",   label:"企業名",                              required:true,  w:"w-[200px]" },
-  { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[108px]" },
-  { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[120px]" },
-  { key:"status",        label:"状況",                                required:false, w:"w-[130px]" },
-  { key:"industry",      label:"業種",                                required:false, w:"w-[100px]" },
-  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[110px]" },
-  { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[108px]" },
-  { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[140px]" },
-  { key:"gbp",           label:"GBP",                                 required:false, w:"w-[80px]"  },
-  { key:"phone",         label:"電話番号",                            required:false, w:"w-[120px]" },
-  { key:"assignee",      label:"担当者",                              required:false, w:"w-[100px]" },
-  { key:"createdBy",     label:"追加者",                              required:false, w:"w-[100px]" },
-  { key:"importMonth",   label:"取込月",                              required:false, w:"w-[100px]" },
-  { key:"department",    label:"部署",                                required:false, w:"w-[100px]" },
-  { key:"absenceReason", label:"不在理由",                            required:false, w:"w-[96px]"  },
-  { key:"gbpManagement", label:"GBPの管理",                           required:false, w:"w-[100px]" },
-  { key:"memo",          label:"メモ",                                required:false, w:"w-[220px]" },
-  { key:"storeCount",    label:"店舗数",                              required:false, w:"w-[88px]"  },
-  { key:"refusalReason", label:"断り理由",                            required:false, w:"w-[110px]" },
-  { key:"posting",       label:"投稿",                                required:false, w:"w-[72px]"  },
-  { key:"review",        label:"口コミ",                              required:false, w:"w-[80px]"  },
-  { key:"sns",           label:"SNS",                                 required:false, w:"w-[72px]"  },
-  { key:"instagram",     label:"Insta",                               required:false, w:"w-[72px]"  },
-  { key:"line",          label:"Line",                                required:false, w:"w-[72px]"  },
-  { key:"facebook",      label:"FB",                                  required:false, w:"w-[72px]"  },
-  { key:"twitter",       label:"Twitter",                             required:false, w:"w-[80px]"  },
-  { key:"os",            label:"OS",                                  required:false, w:"w-[72px]"  },
-  { key:"mailFlag",      label:"メール",                              required:false, w:"w-[80px]"  },
-  { key:"email",         label:"メアド",                              required:false, w:"w-[160px]" },
-  { key:"gbpSiteUrl",    label:"GBPサイトURL",                        required:false, w:"w-[160px]" },
+  { key:"companyName",   label:"企業名",                              required:true,  w:"w-[184px]" },
+  { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[96px]"  },
+  { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[104px]" },
+  { key:"status",        label:"状況",                                required:false, w:"w-[112px]" },
+  { key:"industry",      label:"業種",                                required:false, w:"w-[88px]"  },
+  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[92px]"  },
+  { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[100px]" },
+  { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[120px]" },
+  { key:"gbp",           label:"GBP",                                 required:false, w:"w-[68px]"  },
+  { key:"phone",         label:"電話番号",                            required:false, w:"w-[110px]" },
+  { key:"assignee",      label:"担当者",                              required:false, w:"w-[88px]"  },
+  { key:"createdBy",     label:"追加者",                              required:false, w:"w-[88px]"  },
+  { key:"importMonth",   label:"取込月",                              required:false, w:"w-[84px]"  },
+  { key:"department",    label:"部署",                                required:false, w:"w-[84px]"  },
+  { key:"absenceReason", label:"不在理由",                            required:false, w:"w-[84px]"  },
+  { key:"gbpManagement", label:"GBPの管理",                           required:false, w:"w-[92px]"  },
+  { key:"memo",          label:"メモ",                                required:false, w:"w-[188px]" },
+  { key:"storeCount",    label:"店舗数",                              required:false, w:"w-[76px]"  },
+  { key:"refusalReason", label:"断り理由",                            required:false, w:"w-[96px]"  },
+  { key:"posting",       label:"投稿",                                required:false, w:"w-[64px]"  },
+  { key:"review",        label:"口コミ",                              required:false, w:"w-[68px]"  },
+  { key:"sns",           label:"SNS",                                 required:false, w:"w-[60px]"  },
+  { key:"instagram",     label:"Insta",                               required:false, w:"w-[64px]"  },
+  { key:"line",          label:"Line",                                required:false, w:"w-[60px]"  },
+  { key:"facebook",      label:"FB",                                  required:false, w:"w-[56px]"  },
+  { key:"twitter",       label:"Twitter",                             required:false, w:"w-[72px]"  },
+  { key:"os",            label:"OS",                                  required:false, w:"w-[56px]"  },
+  { key:"mailFlag",      label:"メール",                              required:false, w:"w-[72px]"  },
+  { key:"email",         label:"メアド",                              required:false, w:"w-[150px]" },
+  { key:"gbpSiteUrl",    label:"GBPサイトURL",                        required:false, w:"w-[150px]" },
 ];
 
 const DEFAULT_VISIBLE_COLS = [
@@ -1958,6 +1959,24 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
             {/* Web / GBP */}
             <SectionLabel>Web / GBP</SectionLabel>
             {txt("hpSite",        "HPサイト",   2)}
+            {/* 企業ロゴURL（ファビコン）個別修正 */}
+            <div className="col-span-2">
+              <label className="block text-xs text-slate-500 mb-1">🌐 企業ロゴURL（ファビコンURL）</label>
+              <div className="flex items-center gap-2">
+                <CompanyLogo logoUrl={form.logoUrl} url={form.hpSite} name={form.companyName} />
+                <input type="text" value={form.logoUrl || ""}
+                  onChange={e => upd("logoUrl", e.target.value)}
+                  placeholder="https://logo.clearbit.com/example.com（空欄ならHPサイトから自動取得）"
+                  className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                {form.logoUrl && (
+                  <button type="button" onClick={() => upd("logoUrl", "")}
+                    className="px-2.5 py-2 text-xs text-slate-400 hover:text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap">
+                    自動に戻す
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">手動入力すると保存後この値が最優先で固定表示されます。「自動に戻す」で空欄にするとHPサイトから再取得します。</p>
+            </div>
             {txt("gbp",           "GBP")}
             {txt("gbpManagement", "GBPの管理")}
             {txt("gbpSiteUrl",    "GBPサイトURL", 2)}
