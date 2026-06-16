@@ -496,6 +496,16 @@ function faviconDomain(url) {
   } catch { return ""; }
 }
 
+// Google高画質ファビコンAPI（sz=64）。国内企業（日本郵便の〒等）も確実に取得できる。
+function googleFavicon(domain) {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+}
+// 旧Clearbit自動ロゴURLからドメインを取り出す（移行用）
+function clearbitDomain(logoUrl) {
+  const m = typeof logoUrl === "string" && logoUrl.match(/^https:\/\/logo\.clearbit\.com\/(.+)$/i);
+  return m ? m[1] : "";
+}
+
 // 頭文字アバターの配色パレット（フルクラス文字列＝TailwindのJITに確実に含める）
 const AVATAR_COLORS = [
   "bg-slate-100 text-slate-600",
@@ -521,7 +531,7 @@ function avatarColor(name) {
 // 枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
 const CompanyLogo = memo(function CompanyLogo({ logoUrl, url, name }) {
   const domain = logoUrl ? null : faviconDomain(url);
-  const src = logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null);
+  const src = logoUrl || (domain ? googleFavicon(domain) : null);
   // 失敗したsrcを記録（行の使い回しで別ドメインに変わっても誤フォールバックしない）
   const [errSrc, setErrSrc] = useState(null);
   const showImg = src && errSrc !== src;
@@ -4169,11 +4179,14 @@ export default function App() {
     if (!records.length) return;
     let changed = false;
     const next = records.map(r => {
+      // 旧Clearbit自動ロゴ → Google高画質ファビコンへ一度だけ移行
+      const cbDomain = clearbitDomain(r.logoUrl);
+      if (cbDomain) { changed = true; return { ...r, logoUrl: googleFavicon(cbDomain) }; }
       if (r.logoUrl || !r.hpSite) return r;          // 確定済み or URL無 → 触らない
       const d = faviconDomain(r.hpSite);             // 型チェック・不正値ガードは faviconDomain 内
       if (!d) return r;                              // ドメイン抽出不可 → 触らない（アバター表示）
       changed = true;
-      return { ...r, logoUrl: `https://logo.clearbit.com/${d}` };
+      return { ...r, logoUrl: googleFavicon(d) };
     });
     if (changed) { setRecords(next); syncToAPI(next); }
   }, [records, syncToAPI]);
