@@ -482,14 +482,16 @@ function clampNextCall(r) {
 
 // URL → ドメイン（www除去）。ファビコン取得用
 function faviconDomain(url) {
-  if (!url) return "";
+  // 文字列以外（数値・null・undefined等）は解析せず即フォールバック（バグ落ち防止）
+  if (typeof url !== "string") return "";
+  const s0 = url.trim();
+  if (!s0) return "";
   try {
-    let s = String(url).trim();
-    if (!s) return "";
-    if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+    const s = /^https?:\/\//i.test(s0) ? s0 : "https://" + s0;
     const host = new URL(s).hostname.replace(/^www\./, "");
-    // 正当なドメイン形式のみ採用（スペースや不正文字を含む入力は除外 → 🏢にフォールバック）
-    return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+$/i.test(host) ? host : "";
+    // 末尾がアルファベットTLD（.com/.jp等）の正当なドメインのみ採用。
+    // スペース・不正文字・数値のみ・IPアドレス（例:0.0.48.57）は除外 → アバター表示。
+    return /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(host) ? host : "";
   } catch { return ""; }
 }
 
@@ -512,28 +514,32 @@ function avatarColor(name) {
 }
 
 // ── CompanyLogo ────────────────────────────────────────────────────────────────
-// HPサイトURLのドメインからClearbit APIで公式ロゴをリアルタイム表示（画像は保存せず容量ゼロ）。
-// ロゴ未登録／URL未入力／読み込み失敗時は、企業名の頭文字を色分け丸型アバターに自動フォールバック。
-// サイズ完全固定（w-5 h-5）でガタつきゼロ・遅延読み込み。
-const CompanyLogo = memo(function CompanyLogo({ url, name }) {
-  const domain = faviconDomain(url);
-  const src = domain ? `https://logo.clearbit.com/${domain}` : null;
+// 保存済み logoUrl を最優先（再解析・外部アクセスなしで即表示）。無ければ hpSite の
+// ドメインから Clearbit ロゴURLを安全に導出。URL未入力／文字列以外／読み込み失敗時は
+// 企業名の頭文字を色分けアバターに自動フォールバック（バグ落ち100%防止）。
+// 枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
+const CompanyLogo = memo(function CompanyLogo({ logoUrl, url, name }) {
+  const domain = logoUrl ? null : faviconDomain(url);
+  const src = logoUrl || (domain ? `https://logo.clearbit.com/${domain}` : null);
   // 失敗したsrcを記録（行の使い回しで別ドメインに変わっても誤フォールバックしない）
   const [errSrc, setErrSrc] = useState(null);
-  if (!src || errSrc === src) {
-    const ch = (String(name || "").trim().charAt(0) || "?").toUpperCase();
-    return (
-      <span className={`w-5 h-5 rounded shadow-sm flex-shrink-0 inline-flex items-center justify-center text-[10px] leading-none font-bold font-mono ${avatarColor(name)}`} aria-hidden="true">{ch}</span>
-    );
-  }
+  const showImg = src && errSrc !== src;
   return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      onError={() => setErrSrc(src)}
-      className="w-5 h-5 rounded shadow-sm flex-shrink-0 object-contain bg-white border border-slate-100"
-    />
+    <span className="w-6 h-6 rounded bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm p-0.5">
+      {showImg ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          onError={() => setErrSrc(src)}
+          className="w-full h-full object-contain"
+        />
+      ) : (
+        <span className={`w-full h-full rounded inline-flex items-center justify-center text-xs leading-none font-bold font-mono ${avatarColor(name)}`} aria-hidden="true">
+          {(String(name || "").trim().charAt(0) || "?").toUpperCase()}
+        </span>
+      )}
+    </span>
   );
 });
 
@@ -1876,7 +1882,7 @@ function RecordFormModal({ initial, title, onSave, onClose, onDelete, pastDeal, 
             <SectionLabel>企業情報</SectionLabel>
             <div className="col-span-2">
               <label className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
-                <CompanyLogo url={form.hpSite} name={form.companyName} />
+                <CompanyLogo logoUrl={form.logoUrl} url={form.hpSite} name={form.companyName} />
                 企業名 <span className="text-rose-500">*</span>
               </label>
               <input type="text" value={form.companyName} autoFocus
@@ -3369,7 +3375,7 @@ function OrderView({ orders, setOrders, members }) {
                       if (col.key==="memo") return td(<textarea autoFocus defaultValue={val||""} rows={2} className={`${inputCls} w-full resize-none`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Escape")cancel();if(e.key==="Enter"&&e.ctrlKey)save(e.target.value);}}/>);
                       return td(<input type="text" autoFocus defaultValue={val||""} className={`${inputCls} w-full`} onBlur={e=>save(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")save(e.target.value);if(e.key==="Escape")cancel();}}/>);
                     }
-                    if (col.key==="companyName") return td(<div onClick={open} className="flex items-center gap-1 cursor-pointer hover:text-blue-600" title={String(val||"")}><CompanyLogo url={o.hpSite} name={val} /><span className="whitespace-nowrap truncate font-medium text-slate-800">{val||<span className="text-slate-300">— 入力</span>}</span></div>);
+                    if (col.key==="companyName") return td(<div onClick={open} className="flex items-center gap-1 cursor-pointer hover:text-blue-600" title={String(val||"")}><CompanyLogo logoUrl={o.logoUrl} url={o.hpSite} name={val} /><span className="whitespace-nowrap truncate font-medium text-slate-800">{val||<span className="text-slate-300">— 入力</span>}</span></div>);
                     if (col.key==="plan") return td(val?<span onClick={open} className="cursor-pointer inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 border border-indigo-200 truncate max-w-full">{val}</span>:<span onClick={open} className="text-slate-300 text-xs cursor-pointer">— 設定</span>);
                     if (col.key==="payment") { const c=PAYMENT_STATUS_CFG[val||"未入金"]??{}; return td(<span onClick={open} className={`cursor-pointer inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-black/10 ${c.bg} ${c.text}`}><span className={`w-1.5 h-1.5 rounded-full ${c.dot}`}/>{val||"未入金"}</span>); }
                     if (col.key==="amount") return td(<span onClick={open} className="cursor-pointer text-slate-700 font-semibold hover:bg-slate-50 rounded px-1">{val?`¥${parseAmount(val).toLocaleString()}`:<span className="text-slate-300 font-normal">—</span>}</span>);
@@ -4137,6 +4143,21 @@ export default function App() {
       if (e.status === 403) setIpStatus(false);
     });
   }, [saveToLocal]);
+
+  // 企業ロゴURLを「初回のみ」レコードに確定保存（以降は再解析・再取得なしの超軽量化）。
+  // logoUrl が既にあるレコードは触らないので、確定後はこの処理は何もしない（無限ループなし）。
+  useEffect(() => {
+    if (!records.length) return;
+    let changed = false;
+    const next = records.map(r => {
+      if (r.logoUrl || !r.hpSite) return r;          // 確定済み or URL無 → 触らない
+      const d = faviconDomain(r.hpSite);             // 型チェック・不正値ガードは faviconDomain 内
+      if (!d) return r;                              // ドメイン抽出不可 → 触らない（アバター表示）
+      changed = true;
+      return { ...r, logoUrl: `https://logo.clearbit.com/${d}` };
+    });
+    if (changed) { setRecords(next); syncToAPI(next); }
+  }, [records, syncToAPI]);
 
   // 初回ロード
   useEffect(() => {
@@ -5120,7 +5141,7 @@ export default function App() {
                               onClick={() => copyCompanyName(val, rec.id)}
                               title="クリックでコピー"
                               className={`group flex items-center gap-1 w-full min-w-0 text-left transition-colors ${copiedId===rec.id?"text-green-600":"text-slate-800 hover:text-blue-600"}`}>
-                              <CompanyLogo url={rec.hpSite} name={val} />
+                              <CompanyLogo logoUrl={rec.logoUrl} url={rec.hpSite} name={val} />
                               <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val || "—"}</span>
                               {isOrdered(rec) && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-emerald-100 text-emerald-700 border border-emerald-300 whitespace-nowrap">
