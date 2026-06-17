@@ -2423,27 +2423,6 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
     return parts.map((p, i) => i % 2 === 1 ? <strong key={i}>{p}</strong> : p);
   };
 
-  // ── 分析①：IS担当者別マトリクス ──────────────────────────────────────────────
-  const [memberSortKey, setMemberSortKey] = useState("apoRate");
-  const recOwner = (r) => `${r.assignee||""} ${r.createdBy||""}`; // 担当者+追加者で照合
-  const memberStats = IS_MEMBERS.map(m => {
-    const mn = normName(m);
-    const rs = records.filter(r => {
-      const on = normName(recOwner(r));
-      return on.includes(mn) || mn.includes(normName(r.assignee||"")) && r.assignee;
-    });
-    const cnt = (...st) => rs.filter(r => st.includes(r.status)).length;
-    const apo     = cnt("9.アポ獲得","0.日程調整");
-    const connect = cnt("6.コネクト（改）","7.コネクト（無）");
-    const refused = cnt("4.受付カット");
-    const absent  = rs.filter(r => ["不在","不通","2.優先","3.並"].includes(r.status)).length;
-    const apoRate = connect > 0 ? (apo/connect*100) : 0;
-    return { name:m, total:rs.length, apo, connect, refused, absent, apoRate };
-  }).filter(s => s.total > 0)
-    .sort((a,b) => memberSortKey==="apoRate" ? b.apoRate-a.apoRate
-                 : memberSortKey==="apo"     ? b.apo-a.apo
-                 : b.total-a.total);
-
   // ── 分析③：業種別 成果ランキング（トップ5） ─────────────────────────────────
   const indMap = {};
   records.forEach(r => {
@@ -2569,51 +2548,6 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
           </ul>
         </Section>
       )}
-
-      {/* 分析①：IS担当者別マトリクス */}
-      <Section title="👥 IS担当者別 活動・成果マトリクス">
-        <div className="flex gap-1.5 mb-3">
-          {[["apoRate","アポ獲得率順"],["apo","アポ数順"],["total","件数順"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setMemberSortKey(k)}
-              className={`px-2.5 py-1 text-xs rounded-lg border transition-colors ${memberSortKey===k ? "bg-blue-600 text-white border-blue-600" : "border-slate-200 text-slate-500 hover:bg-slate-50"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b-2 border-slate-200 text-slate-500 text-left">
-                <th className="pb-2 font-semibold">担当者</th>
-                <th className="pb-2 font-semibold text-right">総件数</th>
-                <th className="pb-2 font-semibold text-right">アポ</th>
-                <th className="pb-2 font-semibold text-right">コネクト</th>
-                <th className="pb-2 font-semibold text-right">受付断り</th>
-                <th className="pb-2 font-semibold text-right">不在/不通</th>
-                <th className="pb-2 font-semibold text-right">アポ獲得率</th>
-              </tr>
-            </thead>
-            <tbody>
-              {memberStats.length === 0 ? (
-                <tr><td colSpan={7} className="py-6 text-center text-slate-400">担当者データがありません</td></tr>
-              ) : memberStats.map(s => (
-                <tr key={s.name} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="py-2 text-slate-700 font-medium whitespace-nowrap">{s.name}</td>
-                  <td className="py-2 text-right text-slate-600">{s.total.toLocaleString()}</td>
-                  <td className="py-2 text-right font-bold text-red-700">{s.apo}</td>
-                  <td className="py-2 text-right text-blue-700">{s.connect}</td>
-                  <td className="py-2 text-right text-amber-700">{s.refused}</td>
-                  <td className="py-2 text-right text-slate-500">{s.absent}</td>
-                  <td className={`py-2 text-right font-bold ${s.apoRate>=20?"text-teal-600":s.apoRate>=10?"text-blue-600":"text-slate-500"}`}>
-                    {s.apoRate.toFixed(1)}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[10px] text-slate-400 mt-2">※ アポ獲得率 = アポ獲得商談数 ÷ 担当コネクト数（分母0は0%）</p>
-      </Section>
 
       {/* 分析②：ステータス別パイプライン */}
       <Section title="📊 ステータス別パイプライン（ファネル）">
