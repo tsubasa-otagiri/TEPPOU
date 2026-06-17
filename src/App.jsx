@@ -2467,6 +2467,15 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
     return { name:m, count:rs.length, amount:rs.reduce((s,o)=>s+orderAmount(o),0) };
   }).filter(s => s.count>0).sort((a,b)=>b.amount-a.amount);
 
+  // ── データ入力率（担当者・店舗数）───────────────────────────────────────────────
+  const totalRec       = records.length || 0;
+  const filledAssignee = records.filter(r => String(r.assignee  || "").trim()).length;
+  const filledStore    = records.filter(r => String(r.storeCount || "").trim()).length;
+  const fillStats = [
+    { label:"担当者", filled:filledAssignee, rate: totalRec ? filledAssignee/totalRec*100 : 0, color:"bg-blue-500"    },
+    { label:"店舗数", filled:filledStore,    rate: totalRec ? filledStore/totalRec*100    : 0, color:"bg-emerald-500" },
+  ];
+
   return (
     <div className="space-y-4">
       {/* KPI */}
@@ -2483,6 +2492,21 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
           </div>
         ))}
       </div>
+
+      {/* データ入力率 */}
+      <Section title="📋 データ入力率（担当者・店舗数）">
+        <div className="space-y-3">
+          {fillStats.map(d => (
+            <div key={d.label} className="flex items-center gap-3">
+              <span className="text-xs text-slate-600 w-14 shrink-0">{d.label}</span>
+              <Bar count={d.filled} max={totalRec || 1} colorClass={d.color} />
+              <span className="text-xs font-bold text-slate-700 w-14 text-right shrink-0">{d.rate.toFixed(1)}%</span>
+              <span className="text-[10px] text-slate-400 w-24 text-right shrink-0">{d.filled.toLocaleString()} / {totalRec.toLocaleString()}件</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-slate-400 mt-2">※ 入力率 = 値が入っている件数 ÷ 総件数</p>
+      </Section>
 
       {/* 受注集計 */}
       <Section title="🛍️ 受注集計">
