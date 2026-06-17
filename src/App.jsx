@@ -2471,9 +2471,11 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
   const totalRec       = records.length || 0;
   const filledAssignee = records.filter(r => String(r.assignee  || "").trim()).length;
   const filledStore    = records.filter(r => String(r.storeCount || "").trim()).length;
+  const filledLogo     = records.filter(r => String(r.logoUrl   || "").trim()).length;
   const fillStats = [
-    { label:"担当者", filled:filledAssignee, rate: totalRec ? filledAssignee/totalRec*100 : 0, color:"bg-blue-500"    },
-    { label:"店舗数", filled:filledStore,    rate: totalRec ? filledStore/totalRec*100    : 0, color:"bg-emerald-500" },
+    { label:"担当者",   filled:filledAssignee, rate: totalRec ? filledAssignee/totalRec*100 : 0, color:"bg-blue-500"    },
+    { label:"店舗数",   filled:filledStore,    rate: totalRec ? filledStore/totalRec*100    : 0, color:"bg-emerald-500" },
+    { label:"企業ロゴ", filled:filledLogo,     rate: totalRec ? filledLogo/totalRec*100     : 0, color:"bg-violet-500"  },
   ];
 
   return (
@@ -2494,7 +2496,7 @@ function ReportView({ records, pastDeals = [], orders = [] }) {
       </div>
 
       {/* データ入力率 */}
-      <Section title="📋 データ入力率（担当者・店舗数）">
+      <Section title="📋 データ入力率（担当者・店舗数・企業ロゴ）">
         <div className="space-y-3">
           {fillStats.map(d => (
             <div key={d.label} className="flex items-center gap-3">
@@ -4252,6 +4254,7 @@ export default function App() {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電したリストを除外
   const [leadSourceFilter, setLeadSourceFilter] = useState("all"); // ソース絞り込み
+  const [logoMissingOnly, setLogoMissingOnly] = useState(false); // 企業ロゴ未設定のみ表示
   const [alertFilter,    setAlertFilter]    = useState(null); // null | "recall" | "next"（アラート絞り込み）
   // UI 状態をまとめて localStorage から復元
   const savedUI = (() => { try { return JSON.parse(localStorage.getItem(UI_KEY) || "{}"); } catch { return {}; } })();
@@ -4533,6 +4536,7 @@ export default function App() {
     if (assigneeFilter !== "all" && r.assignee !== assigneeFilter) return false;
     if (excludeTodayCalled && normDate(r.lastCallDate) === today) return false;
     if (leadSourceFilter !== "all" && (r.leadSource||"") !== leadSourceFilter) return false;
+    if (logoMissingOnly && String(r.logoUrl || "").trim()) return false;
     if (alertFilter === "recall" && !isRecallAlert(r)) return false;
     if (alertFilter === "next"   && !isNextAlert(r))   return false;
     if (search) {
@@ -4566,7 +4570,7 @@ export default function App() {
   useEffect(() => {
     setFrozenIds(sortedFiltered.map(r => r.id));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, leadSourceFilter, alertFilter, statusFilterSet, records.length]);
+  }, [view, sortKey, sortDir, search, assigneeFilter, excludeTodayCalled, leadSourceFilter, logoMissingOnly, alertFilter, statusFilterSet, records.length]);
 
   const recById = new Map(records.map(r => [r.id, r]));
   // 店舗数分析インデックス（一度だけ構築）
@@ -5231,6 +5235,12 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
               </svg>
               今日架電を除外
+            </button>
+            {/* 企業ロゴ未設定のみ表示フィルター */}
+            <button onClick={() => { setLogoMissingOnly(v => !v); setPage(1); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
+                ${logoMissingOnly ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+              🚫🖼️ ロゴ無しのみ
             </button>
           </div>
         </div>
