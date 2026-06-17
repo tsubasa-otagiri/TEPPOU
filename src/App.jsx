@@ -1586,6 +1586,82 @@ function ImportModal({ onImport, onImportPastDeals, onImportMetel, onImportOrder
   );
 }
 
+// ── BulkEditModal（選択リードの一括編集）─────────────────────────────────────────
+function BulkEditModal({ count, members, onApply, onClose }) {
+  const [form, setForm] = useState({ status: "未架電" });
+  const [on, setOn]     = useState({});
+  const toggle = k => setOn(s => ({ ...s, [k]: !s[k] }));
+  const set    = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const selCls = "w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+  const apply = () => {
+    const updates = {};
+    Object.keys(on).forEach(k => { if (on[k]) updates[k] = form[k] ?? ""; });
+    if (Object.keys(updates).length === 0) { onClose(); return; }
+    onApply(updates);
+  };
+  const Row = ({ k, label, children }) => (
+    <div className="flex items-center gap-2 py-1.5">
+      <label className="flex items-center gap-1.5 w-28 shrink-0 text-xs text-slate-600 cursor-pointer">
+        <input type="checkbox" checked={!!on[k]} onChange={() => toggle(k)} className="rounded border-slate-300 text-blue-600" />
+        {label}
+      </label>
+      <div className={`flex-1 ${on[k] ? "" : "opacity-40 pointer-events-none"}`}>{children}</div>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
+          <h2 className="text-base font-bold text-slate-800">✏️ 選択した {count} 件を一括編集</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+        </div>
+        <div className="overflow-y-auto flex-1 px-6 py-4">
+          <p className="text-xs text-slate-500 mb-3">変更したい項目に<span className="font-semibold text-slate-700">チェック</span>を入れて値を設定してください。チェックした項目だけが選択 {count} 件すべてに反映されます（空欄を選ぶと一括クリア）。</p>
+          <Row k="status" label="状況">
+            <select value={form.status} onChange={e => set("status", e.target.value)} className={selCls}>
+              {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Row>
+          <Row k="assignee" label="担当者">
+            <select value={form.assignee ?? ""} onChange={e => set("assignee", e.target.value)} className={selCls}>
+              <option value="">（空欄にする）</option>
+              {members.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </Row>
+          <Row k="leadSource" label="ソース">
+            <select value={form.leadSource ?? ""} onChange={e => set("leadSource", e.target.value)} className={selCls}>
+              <option value="">（空欄にする）</option>
+              {Object.keys(LEAD_SOURCE_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Row>
+          <Row k="absenceReason" label="不在理由">
+            <select value={form.absenceReason ?? ""} onChange={e => set("absenceReason", e.target.value)} className={selCls}>
+              <option value="">（空欄にする）</option>
+              {Object.keys(ABSENCE_REASON_CFG).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </Row>
+          <Row k="lastCallDate" label="架電日">
+            <input type="date" value={form.lastCallDate ?? ""} onChange={e => set("lastCallDate", e.target.value)} className={selCls} />
+          </Row>
+          <Row k="nextCallDate" label="次回架電日">
+            <input type="date" value={form.nextCallDate ?? ""} onChange={e => set("nextCallDate", e.target.value)} className={selCls} />
+          </Row>
+          <Row k="industry" label="業種">
+            <input type="text" value={form.industry ?? ""} onChange={e => set("industry", e.target.value)} className={selCls} />
+          </Row>
+          <Row k="department" label="部署">
+            <input type="text" value={form.department ?? ""} onChange={e => set("department", e.target.value)} className={selCls} />
+          </Row>
+        </div>
+        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">キャンセル</button>
+          <button onClick={apply} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors">{count} 件に反映</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── StatusBulkUpdateModal ──────────────────────────────────────────────────────
 // フェーズ（Excel）→ 状況（TEPPOU）変換。null=更新しない
 function phaseToStatus(phase) {
@@ -4180,6 +4256,7 @@ export default function App() {
   const [showBulkStatus, setShowBulkStatus] = useState(false);
   const [hasAutoBackup,  setHasAutoBackup]  = useState(false);
   const [showNew,        setShowNew]        = useState(false);
+  const [showBulkEdit,   setShowBulkEdit]   = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
   const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise","orders"].includes(savedUI.view) ? savedUI.view : "list");
@@ -4727,6 +4804,18 @@ export default function App() {
     setSelected(new Set());
   }, [selected, syncToAPI]);
 
+  // 選択リードの一括編集: updates の各項目を選択中レコードすべてに反映
+  const bulkEditSelected = useCallback((updates) => {
+    if (!selected.size) return;
+    setRecords(p => {
+      const next = p.map(r => selected.has(r.id) ? clampNextCall({ ...r, ...updates, updatedAt: nowIso() }) : r);
+      syncToAPI(next);
+      return next;
+    });
+    setShowBulkEdit(false);
+    setSelected(new Set());
+  }, [selected, syncToAPI]);
+
   const saveInlineValue = useCallback((id, key, raw) => {
     setEditingCell(null);
     const value = (key === "lastCallDate" || key === "nextCallDate") ? normDate(raw) : raw;
@@ -5080,6 +5169,14 @@ export default function App() {
               </svg>
               新規追加
             </button>
+
+            {/* Bulk edit */}
+            {selected.size > 0 && (
+              <button onClick={() => setShowBulkEdit(true)}
+                className="flex items-center gap-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+                ✏️ 選択を一括編集（{selected.size}件）
+              </button>
+            )}
 
             {/* Batch delete */}
             {selected.size > 0 && (
@@ -5441,6 +5538,9 @@ export default function App() {
       )}
       {showBulkStatus && (
         <StatusBulkUpdateModal records={records} onUpdate={bulkUpdateStatus} onClose={() => setShowBulkStatus(false)} />
+      )}
+      {showBulkEdit && (
+        <BulkEditModal count={selected.size} members={IS_MEMBERS} onApply={bulkEditSelected} onClose={() => setShowBulkEdit(false)} />
       )}
       {showNew && (
         <RecordFormModal
