@@ -1593,6 +1593,39 @@ function BulkEditModal({ count, members, onApply, onClose }) {
   const toggle = k => setOn(s => ({ ...s, [k]: !s[k] }));
   const set    = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const selCls = "w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+  // ロゴ: 取り込んだ画像を24×24pxに圧縮しBase64でlogoUrlへ。ロゴ項目を自動でON。
+  const logoFileRef = useRef();
+  const onImagePicked = useCallback((file) => {
+    if (!file || !file.type || !file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = 24; c.height = 24;
+        const ctx = c.getContext("2d");
+        ctx.clearRect(0, 0, 24, 24);
+        ctx.drawImage(img, 0, 0, 24, 24);
+        try {
+          const data = c.toDataURL("image/png");
+          setForm(f => ({ ...f, logoUrl: data }));
+          setOn(s => ({ ...s, logoUrl: true }));
+        } catch {}
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }, []);
+  const onModalPaste = useCallback((e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith("image/")) {
+        const file = it.getAsFile();
+        if (file) { e.preventDefault(); onImagePicked(file); return; }
+      }
+    }
+  }, [onImagePicked]);
   const apply = () => {
     const updates = {};
     Object.keys(on).forEach(k => { if (on[k]) updates[k] = form[k] ?? ""; });
@@ -1609,7 +1642,7 @@ function BulkEditModal({ count, members, onApply, onClose }) {
     </div>
   );
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onPaste={onModalPaste}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
           <h2 className="text-base font-bold text-slate-800">✏️ 選択した {count} 件を一括編集</h2>
@@ -1617,6 +1650,20 @@ function BulkEditModal({ count, members, onApply, onClose }) {
         </div>
         <div className="overflow-y-auto flex-1 px-6 py-4">
           <p className="text-xs text-slate-500 mb-3">変更したい項目に<span className="font-semibold text-slate-700">チェック</span>を入れて値を設定してください。チェックした項目だけが選択 {count} 件すべてに反映されます（空欄を選ぶと一括クリア）。</p>
+          <Row k="logoUrl" label="🌐 企業ロゴ">
+            <div className="flex items-center gap-2">
+              <CompanyLogo logoUrl={form.logoUrl} />
+              <input type="text" value={form.logoUrl ?? ""} onChange={e => set("logoUrl", e.target.value)}
+                placeholder="https://... または画像を貼り付け／アップロード（空欄で一括クリア）"
+                className={selCls} />
+              <input ref={logoFileRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { onImagePicked(e.target.files && e.target.files[0]); e.target.value = ""; }} />
+              <button type="button" onClick={() => logoFileRef.current && logoFileRef.current.click()}
+                className="px-2.5 py-1.5 text-xs text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50 whitespace-nowrap shrink-0">
+                🖼️ 画像
+              </button>
+            </div>
+          </Row>
           <Row k="status" label="状況">
             <select value={form.status} onChange={e => set("status", e.target.value)} className={selCls}>
               {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
