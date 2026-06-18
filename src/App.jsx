@@ -259,24 +259,24 @@ const ABSENCE_REASON_CFG = {
 
 // 列幅は1画面に収まるようタイトに最適化（table-fixed + truncate でガタつきゼロ）
 const ALL_COLUMNS = [
-  { key:"companyName",   label:"企業名",                              required:true,  w:"w-[184px]" },
-  { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[96px]"  },
-  { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[104px]" },
-  { key:"status",        label:"状況",                                required:false, w:"w-[140px]" },
-  { key:"industry",      label:"業種",                                required:false, w:"w-[88px]"  },
-  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[120px]" },
-  { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[100px]" },
-  { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[120px]" },
-  { key:"gbp",           label:"GBP",                                 required:false, w:"w-[68px]"  },
-  { key:"phone",         label:"電話番号",                            required:false, w:"w-[110px]" },
-  { key:"assignee",      label:"担当者",                              required:false, w:"w-[88px]"  },
-  { key:"createdBy",     label:"追加者",                              required:false, w:"w-[88px]"  },
-  { key:"importMonth",   label:"取込月",                              required:false, w:"w-[84px]"  },
-  { key:"department",    label:"部署",                                required:false, w:"w-[84px]"  },
-  { key:"absenceReason", label:"不在理由",                            required:false, w:"w-[84px]"  },
-  { key:"gbpManagement", label:"GBPの管理",                           required:false, w:"w-[92px]"  },
-  { key:"memo",          label:"メモ",                                required:false, w:"w-[188px]" },
-  { key:"storeCount",    label:"店舗数",                              required:false, w:"w-[76px]"  },
+  { key:"companyName",   label:"企業名",                              required:true,  w:"w-[240px]" },
+  { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[140px]" },
+  { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[150px]" },
+  { key:"status",        label:"状況",                                required:false, w:"w-[150px]" },
+  { key:"industry",      label:"業種",                                required:false, w:"w-[110px]" },
+  { key:"leadSource",    label:"ソース",                              required:false, w:"w-[130px]" },
+  { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[140px]" },
+  { key:"hpSite",        label:"HPサイト",                            required:false, w:"w-[140px]" },
+  { key:"gbp",           label:"GBP",                                 required:false, w:"w-[80px]"  },
+  { key:"phone",         label:"電話番号",                            required:false, w:"w-[130px]" },
+  { key:"assignee",      label:"担当者",                              required:false, w:"w-[120px]" },
+  { key:"createdBy",     label:"追加者",                              required:false, w:"w-[110px]" },
+  { key:"importMonth",   label:"取込月",                              required:false, w:"w-[130px]" },
+  { key:"department",    label:"部署",                                required:false, w:"w-[110px]" },
+  { key:"absenceReason", label:"不在理由",                            required:false, w:"w-[120px]" },
+  { key:"gbpManagement", label:"GBPの管理",                           required:false, w:"w-[110px]" },
+  { key:"memo",          label:"メモ",                                required:false, w:"w-[220px]" },
+  { key:"storeCount",    label:"店舗数",                              required:false, w:"w-[100px]" },
   { key:"refusalReason", label:"断り理由",                            required:false, w:"w-[96px]"  },
   { key:"posting",       label:"投稿",                                required:false, w:"w-[64px]"  },
   { key:"review",        label:"口コミ",                              required:false, w:"w-[68px]"  },
@@ -496,18 +496,14 @@ function faviconDomain(url) {
   } catch { return ""; }
 }
 
-// Google高画質ファビコンAPI（sz=64）。国内企業（日本郵便の〒等）も確実に取得できる。
-function googleFavicon(domain) {
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+// Clearbit Logo API。ロゴが無いドメインは404を返すので onError で「白紙」へ確実に落とせる。
+function clearbitLogo(domain) {
+  return `https://logo.clearbit.com/${domain}`;
 }
-// 旧Clearbit自動ロゴURLからドメインを取り出す（移行用）
-function clearbitDomain(logoUrl) {
-  const m = typeof logoUrl === "string" && logoUrl.match(/^https:\/\/logo\.clearbit\.com\/(.+)$/i);
-  return m ? m[1] : "";
-}
-// 自動生成（Google/Clearbitファビコン）URLか判定
-function isAutoFaviconUrl(u) {
-  return typeof u === "string" && /^https:\/\/(www\.google\.com\/s2\/favicons|logo\.clearbit\.com)/i.test(u);
+// 旧GoogleファビコンURL（地球儀を返す）からドメインを取り出す（Clearbitへ移行する用）
+function googleFaviconDomain(u) {
+  const m = typeof u === "string" && u.match(/^https:\/\/www\.google\.com\/s2\/favicons\?domain=([^&]+)/i);
+  return m ? decodeURIComponent(m[1]) : "";
 }
 
 // 大手・多店舗企業のキュレーション（主要チェーンのドメイン・店舗数の目安）。
@@ -577,7 +573,7 @@ function matchKnownDomain(name) { const e = matchKnown(name); return e ? e.domai
 function matchKnownStores(name) { const e = matchKnown(name); return (e && e.stores != null) ? e.stores : null; }
 function matchKnownLogo(name) {
   const d = matchKnownDomain(name);
-  return d ? googleFavicon(d) : null;
+  return d ? clearbitLogo(d) : null;
 }
 
 // 頭文字アバターの配色パレット（フルクラス文字列＝TailwindのJITに確実に含める）
@@ -4370,6 +4366,9 @@ export default function App() {
     const next = records.map(r => {
       const known = matchKnown(r.companyName);              // 大手・多店舗チェーンの既知エントリ
       let nr = r, ch = false;
+      // 旧Googleファビコン（地球儀）を保存済みのレコードはClearbitへ移行（手動画像/URLは触らない）
+      const gDom = googleFaviconDomain(nr.logoUrl);
+      if (gDom) { nr = { ...nr, logoUrl: clearbitLogo(gDom) }; ch = true; }
       // 店舗数: 未入力かつ既知企業 → 社名から自動入力（入力済みは変更しない）
       if (known && known.stores != null && !String(r.storeCount ?? "").trim()) {
         nr = { ...nr, storeCount: String(known.stores) }; ch = true;
@@ -4381,7 +4380,7 @@ export default function App() {
           nr = { ...nr, hpSite: `https://${knownDomain}/` }; ch = true;
         }
         const d = faviconDomain(nr.hpSite) || knownDomain;
-        if (d) { nr = { ...nr, logoUrl: googleFavicon(d) }; ch = true; }
+        if (d) { nr = { ...nr, logoUrl: clearbitLogo(d) }; ch = true; }
       }
       if (ch) changed = true;
       return nr;
@@ -5338,12 +5337,12 @@ export default function App() {
                       const openEdit  = () => setEditingCell({ id: rec.id, key: col.key });
                       const save      = (val) => saveInlineValue(rec.id, col.key, val);
                       const cancel    = () => setEditingCell(null);
-                      const inputCls  = "border border-blue-400 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white";
+                      const inputCls  = "w-full h-full px-1 py-0.5 text-sm border border-blue-400 rounded box-border focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white";
                       const mkInput   = (type, extra = {}) => (
                         <input type={type} autoFocus defaultValue={
                             (type === "date") ? normDate(rec[col.key]) || "" : rec[col.key] ?? ""
                           }
-                          className={`${inputCls} ${type === "date" ? "w-32" : type === "number" ? "w-20" : "w-36"}`}
+                          className={inputCls}
                           onBlur={e    => save(e.target.value)}
                           onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
                           {...extra}
@@ -5356,7 +5355,7 @@ export default function App() {
                         if (col.key === "status") {
                           editEl = (
                             <select autoFocus defaultValue={rec.status}
-                              className={`${inputCls} w-36`}
+                              className={inputCls}
                               onChange={e => save(e.target.value)}
                               onBlur={cancel}
                               onKeyDown={e => e.key === "Escape" && cancel()}>
@@ -5366,7 +5365,7 @@ export default function App() {
                         } else if (col.key === "leadSource") {
                           editEl = (
                             <select autoFocus defaultValue={rec.leadSource || ""}
-                              className={`${inputCls} w-36`}
+                              className={inputCls}
                               onChange={e => save(e.target.value)}
                               onBlur={cancel}
                               onKeyDown={e => e.key === "Escape" && cancel()}>
@@ -5377,7 +5376,7 @@ export default function App() {
                         } else if (col.key === "absenceReason") {
                           editEl = (
                             <select autoFocus defaultValue={rec.absenceReason || ""}
-                              className={`${inputCls} w-28`}
+                              className={inputCls}
                               onChange={e => save(e.target.value)}
                               onBlur={cancel}
                               onKeyDown={e => e.key === "Escape" && cancel()}>
@@ -5388,7 +5387,7 @@ export default function App() {
                         } else if (col.key === "importMonth") {
                           editEl = (
                             <input type="month" autoFocus defaultValue={rec.importMonth || ""}
-                              className={`${inputCls} w-32`}
+                              className={inputCls}
                               onBlur={e    => save(e.target.value)}
                               onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
                             />
@@ -5400,7 +5399,7 @@ export default function App() {
                             : (normDate(rec[col.key]) || "");
                           editEl = (
                             <input type="date" autoFocus defaultValue={dateDefault}
-                              className={`${inputCls} w-32`}
+                              className={inputCls}
                               onBlur={e    => save(e.target.value)}
                               onKeyDown={e => { if (e.key === "Enter") save(e.target.value); if (e.key === "Escape") cancel(); }}
                             />
@@ -5411,7 +5410,7 @@ export default function App() {
                           editEl = (
                             <textarea autoFocus defaultValue={rec.memo || ""}
                               rows={3}
-                              className={`${inputCls} w-56 resize-none`}
+                              className={`${inputCls} resize-none`}
                               onBlur={e    => save(e.target.value)}
                               onKeyDown={e => { if (e.key === "Escape") cancel(); if (e.key === "Enter" && e.ctrlKey) save(e.target.value); }}
                             />
@@ -5524,15 +5523,9 @@ export default function App() {
                       }
 
                       return (
-                        <td key={col.key} className={`${col.w||"w-[120px]"} px-3 py-2 whitespace-nowrap align-middle ${isEditing ? "relative" : "overflow-hidden"}`}>
-                          {isEditing ? (
-                            // 編集時はクリップせず、フロート表示で入力欄を最大表示（日付ピッカーも表示）
-                            <div className="absolute z-30 left-1 top-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl ring-1 ring-blue-300 p-1.5 min-w-[200px] w-max max-w-[360px]">
-                              {editEl}
-                            </div>
-                          ) : (
-                            <div className="truncate">{viewEl}</div>
-                          )}
+                        <td key={col.key} className={`${col.w||"w-[120px]"} ${isEditing ? "px-1" : "px-3"} py-2 whitespace-nowrap align-middle overflow-hidden`}>
+                          {/* 編集時は入力欄をセル幅いっぱい（w-full）に広げて文字の見切れを防止 */}
+                          {isEditing ? editEl : <div className="truncate">{viewEl}</div>}
                         </td>
                       );
                     })}
