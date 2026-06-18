@@ -295,6 +295,19 @@ const DEFAULT_VISIBLE_COLS = [
   "companyName","lastCallDate","nextCallDate","status","absenceReason","storeCount","phone","assignee","memo",
 ];
 
+// メインリストの列幅（％）。w-full + table-fixed と組み合わせ、表示中の列が常に1画面に
+// 収まるよう比率で配分する（横スクロールを出さない）。状況など重要列は見切れない幅を確保。
+const LIST_COL_W = {
+  companyName:"w-[14%]", memo:"w-[12%]", status:"w-[11%]",
+  email:"w-[12%]", gbpSiteUrl:"w-[12%]", hpSite:"w-[10%]",
+  nextCallDate:"w-[10%]", lastCallDate:"w-[9%]", leadAddedDate:"w-[9%]",
+  leadSource:"w-[9%]", phone:"w-[9%]", refusalReason:"w-[9%]", gbpManagement:"w-[9%]",
+  industry:"w-[8%]", absenceReason:"w-[8%]", assignee:"w-[8%]",
+  createdBy:"w-[8%]", importMonth:"w-[8%]", department:"w-[8%]",
+  storeCount:"w-[7%]",
+};
+const listColW = key => LIST_COL_W[key] || "w-[6%]";
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function parseCSV(text) {
   const lines = text.trim().split(/\r?\n/);
@@ -5281,7 +5294,7 @@ export default function App() {
 
         {/* ── Table ── */}
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <div className="overflow-auto max-h-[calc(100vh-280px)]">
+          <div className="overflow-y-auto overflow-x-hidden max-h-[calc(100vh-280px)]">
           <table className="w-full text-sm border-collapse table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                 <tr>
@@ -5298,7 +5311,7 @@ export default function App() {
                         else { setSortKey(col.key); setSortDir("asc"); }
                         setPage(1);
                       }}
-                      className={`${col.w||"w-[120px]"} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
+                      className={`${listColW(col.key)} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                       <span className="flex items-center gap-1">
                         <span className="truncate">{col.label}</span>
                         {sortKey === col.key
