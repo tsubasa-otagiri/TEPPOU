@@ -4602,6 +4602,23 @@ export default function App() {
   const stateRef = useRef({ records, pastDeals, pastMgmt });
   useEffect(() => { stateRef.current = { records, pastDeals, pastMgmt }; }, [records, pastDeals, pastMgmt]);
 
+  // ── 変更を戻す（Undo）──────────────────────────────────────────────────────────
+  // レコード変更の直前スナップショットを最大30件保持し、1手ずつ取り消す。
+  const undoRef = useRef([]);
+  const [undoCount, setUndoCount] = useState(0);
+  const pushUndo = useCallback(() => {
+    undoRef.current = [...undoRef.current.slice(-29), stateRef.current.records];
+    setUndoCount(undoRef.current.length);
+  }, []);
+  const undoLastChange = useCallback(() => {
+    if (undoRef.current.length === 0) return;
+    const prev = undoRef.current[undoRef.current.length - 1];
+    undoRef.current = undoRef.current.slice(0, -1);
+    setUndoCount(undoRef.current.length);
+    setRecords(prev);
+    syncToAPI(prev);
+  }, [syncToAPI]);
+
   // 初回: 自動退避の有無を確認
   useEffect(() => { idbKvGet("sales_mgr_auto_backup").then(b => setHasAutoBackup(!!b)); }, []);
 
@@ -4800,30 +4817,34 @@ export default function App() {
   }, [syncToAPI, snapshotForRollback]);
 
   const saveRecord = useCallback(form => {
+    pushUndo();
     const isEdit = records.some(r => r.id === form.id);
     if (isEdit) {
       setRecords(p => { const next = p.map(r => r.id===form.id ? clampNextCall({ ...r, ...form, updatedAt:nowIso() }) : r); syncToAPI(next); return next; });
     } else {
       setRecords(p => { const next = [...p, clampNextCall({ ...form, id:genId(), callCount:form.callCount||0, importedAt:nowIso(), updatedAt:nowIso(), source:"manual", leadAddedDate: form.leadAddedDate || getToday() })]; syncToAPI(next); return next; });
     }
-  }, [records, syncToAPI]);
+  }, [records, syncToAPI, pushUndo]);
 
   const deleteRecord = useCallback(id => {
     if (!window.confirm("このレコードを削除しますか？")) return;
+    pushUndo();
     setRecords(p => { const next = p.filter(r => r.id !== id); syncToAPI(next); return next; });
     setSelected(p => { const n = new Set(p); n.delete(id); return n; });
-  }, [syncToAPI]);
+  }, [syncToAPI, pushUndo]);
 
   const deleteSelected = useCallback(() => {
     if (!selected.size) return;
     if (!window.confirm(`選択した ${selected.size} 件を削除しますか？`)) return;
+    pushUndo();
     setRecords(p => { const next = p.filter(r => !selected.has(r.id)); syncToAPI(next); return next; });
     setSelected(new Set());
-  }, [selected, syncToAPI]);
+  }, [selected, syncToAPI, pushUndo]);
 
   // 選択リードの一括編集: updates の各項目を選択中レコードすべてに反映
   const bulkEditSelected = useCallback((updates) => {
     if (!selected.size) return;
+    pushUndo();
     setRecords(p => {
       const next = p.map(r => selected.has(r.id) ? clampNextCall({ ...r, ...updates, updatedAt: nowIso() }) : r);
       syncToAPI(next);
@@ -4831,33 +4852,36 @@ export default function App() {
     });
     setShowBulkEdit(false);
     setSelected(new Set());
-  }, [selected, syncToAPI]);
+  }, [selected, syncToAPI, pushUndo]);
 
   const saveInlineValue = useCallback((id, key, raw) => {
     setEditingCell(null);
+    pushUndo();
     const value = (key === "lastCallDate" || key === "nextCallDate") ? normDate(raw) : raw;
     setRecords(p => {
       const next = p.map(r => r.id === id ? clampNextCall({ ...r, [key]: value, updatedAt: nowIso() }) : r);
       syncToAPI(next);
       return next;
     });
-  }, [syncToAPI]);
+  }, [syncToAPI, pushUndo]);
 
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 1500);
     });
-    // 架電日を本日に自動更新
+    // 架電日を本日に自動更新（誤操作は「戻る」で取り消し可能）
+    pushUndo();
     setRecords(p => {
       const next = p.map(r => r.id === id ? { ...r, lastCallDate: getToday(), updatedAt: nowIso() } : r);
       syncToAPI(next);
       return next;
     });
-  }, [syncToAPI]);
+  }, [syncToAPI, pushUndo]);
 
   // statusMap: Map(id → 新ステータス)。または (Set(ids), status) の旧形式も許容
   const bulkUpdateStatus = useCallback((statusMap, statusArg) => {
+    pushUndo();
     setRecords(p => {
       const next = p.map(r => {
         if (statusMap instanceof Map) {
@@ -4868,12 +4892,13 @@ export default function App() {
       syncToAPI(next);
       return next;
     });
-  }, [syncToAPI]);
+  }, [syncToAPI, pushUndo]);
 
   const cleanDuplicates = useCallback(ids => {
+    pushUndo();
     const del = new Set(ids);
     setRecords(p => { const next = p.filter(r => !del.has(r.id)); syncToAPI(next); return next; });
-  }, [syncToAPI]);
+  }, [syncToAPI, pushUndo]);
 
   const toggleSelect = useCallback((id, checked) => {
     setSelected(p => { const n = new Set(p); checked ? n.add(id) : n.delete(id); return n; });
@@ -5084,6 +5109,16 @@ export default function App() {
         {/* ── Toolbar ── */}
         <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
+
+            {/* 戻る（直前の変更を取り消し） */}
+            <button onClick={undoLastChange} disabled={undoCount === 0}
+              title="直前のレコード変更を取り消します（架電日の誤変更などを元に戻せます）"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors
+                ${undoCount === 0
+                  ? "bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed"
+                  : "bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-700"}`}>
+              ↩️ 戻る{undoCount > 0 ? `（${undoCount}）` : ""}
+            </button>
 
             {/* CSV Import */}
             <button onClick={() => setShowImport(true)}
