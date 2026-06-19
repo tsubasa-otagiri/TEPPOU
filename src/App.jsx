@@ -609,15 +609,19 @@ function avatarColor(name) {
 
 // ── CompanyLogo ────────────────────────────────────────────────────────────────
 // 企業ロゴ: logo_url（Clearbit/手動Base64/URL）を表示。
-// 未設定 → 空欄（何も表示しない）。取得失敗 → ブラウザ標準の壊れ画像アイコン（Chromeの地球儀）。
-// 成功 → 実ロゴ。枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
+// 未設定 → 空欄。取得失敗（Clearbit 404等）→ 地球儀（🌐）。成功 → 実ロゴ。
+// 枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
 const CompanyLogo = memo(function CompanyLogo({ logoUrl }) {
+  // 失敗したsrcを記録（行の使い回しで別レコードに変わっても誤表示しない）
+  const [errSrc, setErrSrc] = useState(null);
+  const failed = logoUrl && errSrc === logoUrl;
   return (
     <span className="w-6 h-6 rounded bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm p-0.5">
-      {logoUrl ? (
-        // 読み込み失敗時は onError で隠さず、ブラウザの壊れ画像アイコン（地球儀）をそのまま表示
-        <img src={logoUrl} alt="" loading="lazy" className="w-full h-full object-contain" />
-      ) : null}
+      {!logoUrl
+        ? null /* 未設定 → 空欄 */
+        : failed
+          ? <span className="text-[13px] leading-none text-slate-400" aria-hidden="true">🌐</span> /* 取得失敗 → 地球儀 */
+          : <img src={logoUrl} alt="" loading="lazy" onError={() => setErrSrc(logoUrl)} className="w-full h-full object-contain" />}
     </span>
   );
 });
