@@ -608,8 +608,8 @@ function avatarColor(name) {
 }
 
 // ── CompanyLogo ────────────────────────────────────────────────────────────────
-// 企業ロゴは手動登録のみ（URL／画像アップロード／Ctrl+V貼り付けのBase64）。自動取得なし。
-// 未登録・読み込み失敗時は中身なしの「白紙（無地枠）」を表示（頭文字アバターは表示しない）。
+// 企業ロゴ: logo_url（Clearbit/手動Base64/URL）を表示。
+// 取得失敗（Clearbit 404など）・未設定時は地球儀アイコン（🌐）にフォールバック。
 // 枠サイズ完全固定（w-6 h-6）でガタつきゼロ・遅延読み込み。
 const CompanyLogo = memo(function CompanyLogo({ logoUrl }) {
   // 失敗したsrcを記録（行の使い回しで別レコードに変わっても誤表示しない）
@@ -617,7 +617,7 @@ const CompanyLogo = memo(function CompanyLogo({ logoUrl }) {
   const showImg = logoUrl && errSrc !== logoUrl;
   return (
     <span className="w-6 h-6 rounded bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm p-0.5">
-      {showImg && (
+      {showImg ? (
         <img
           src={logoUrl}
           alt=""
@@ -625,6 +625,9 @@ const CompanyLogo = memo(function CompanyLogo({ logoUrl }) {
           onError={() => setErrSrc(logoUrl)}
           className="w-full h-full object-contain"
         />
+      ) : (
+        // ロゴ取得失敗／未設定時は地球儀アイコンを表示
+        <span className="text-[13px] leading-none text-slate-400" aria-hidden="true">🌐</span>
       )}
     </span>
   );
