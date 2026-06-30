@@ -955,11 +955,14 @@ function SwipkitMark({ className }) {
 }
 function AppIcon({ logo, size="md" }) {
   const wh = size==="lg" ? "w-16 h-16" : size==="sm" ? "w-7 h-7" : "w-9 h-9";
-  const iw = size==="lg" ? "w-10 h-10" : size==="sm" ? "w-5 h-5" : "w-6 h-6";
+  const iw = size==="lg" ? "w-8 h-8"  : size==="sm" ? "w-4 h-4" : "w-5 h-5";
   if (logo) return <img src={logo} alt="logo" className={`${wh} rounded-xl object-contain`} />;
   return (
-    <div className={`${wh} bg-white border border-slate-200 rounded-xl flex items-center justify-center shrink-0`}>
-      <SwipkitMark className={iw} />
+    <div className={`${wh} bg-blue-600 rounded-xl flex items-center justify-center shrink-0`}>
+      <svg className={`${iw} text-white`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
     </div>
   );
 }
@@ -4500,20 +4503,12 @@ export default function App() {
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
+    if (!settings.favicon) return;
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
-    if (settings.favicon) {
-      link.type = "image/png";
-      link.setAttribute("sizes", "512x512");
-      link.href = settings.favicon;
-    } else {
-      // 既定: SWIPKit のSロゴ（SVG）をファビコンに
-      link.type = "image/svg+xml";
-      link.removeAttribute("sizes");
-      link.href = "data:image/svg+xml," + encodeURIComponent(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><g fill="none" stroke="#5B5BF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"><path d="M22 32 H64 V58"/><path d="M54 48 L64 58 L74 48"/><path d="M74 64 H32 V38"/><path d="M42 48 L32 38 L22 48"/></g></svg>`
-      );
-    }
+    link.type = "image/png";
+    link.setAttribute("sizes", "512x512");
+    link.href = settings.favicon;
   }, [settings.favicon]);
 
   // ── 自動バックアップ ───────────────────────────────────────────────────────────
