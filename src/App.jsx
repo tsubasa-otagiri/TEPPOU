@@ -940,16 +940,26 @@ function CropModal({ src, onCrop, onClose }) {
 }
 
 // ── AppIcon ────────────────────────────────────────────────────────────────────
+// SWIPKit ロゴ（上下スワイプ＝2本の矢印が S を描くマーク）
+function SwipkitMark({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g stroke="#5B5BF6" strokeWidth="11" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 32 H64 V58" />
+        <path d="M54 48 L64 58 L74 48" />
+        <path d="M74 64 H32 V38" />
+        <path d="M42 48 L32 38 L22 48" />
+      </g>
+    </svg>
+  );
+}
 function AppIcon({ logo, size="md" }) {
   const wh = size==="lg" ? "w-16 h-16" : size==="sm" ? "w-7 h-7" : "w-9 h-9";
-  const iw = size==="lg" ? "w-8 h-8"  : size==="sm" ? "w-4 h-4" : "w-5 h-5";
+  const iw = size==="lg" ? "w-10 h-10" : size==="sm" ? "w-5 h-5" : "w-6 h-6";
   if (logo) return <img src={logo} alt="logo" className={`${wh} rounded-xl object-contain`} />;
   return (
-    <div className={`${wh} bg-blue-600 rounded-xl flex items-center justify-center shrink-0`}>
-      <svg className={`${iw} text-white`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
+    <div className={`${wh} bg-white border border-slate-200 rounded-xl flex items-center justify-center shrink-0`}>
+      <SwipkitMark className={iw} />
     </div>
   );
 }
@@ -4251,6 +4261,7 @@ export default function App() {
   const [pastDeals,      setPastDeals]      = useState([]);   // 過去商談プル照合用
   const [pastMgmt,       setPastMgmt]       = useState([]);   // 過去商談管理（再アプローチ）
   const [enterprise,     setEnterprise]     = useState([]);   // エンタープライズ管理（大手）
+  const [swipkit,        setSwipkit]        = useState([]);   // SWIPKit 営業リスト
   const [orders,         setOrders]         = useState([]);   // 受注案件管理
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [showHelp,       setShowHelp]       = useState(false);
@@ -4275,7 +4286,7 @@ export default function App() {
   const [showBulkEdit,   setShowBulkEdit]   = useState(false);
   const [editRec,        setEditRec]        = useState(null);
   const [selected,       setSelected]       = useState(new Set());
-  const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise","orders"].includes(savedUI.view) ? savedUI.view : "list");
+  const [view,           setView]           = useState(["list","analysis","pastmgmt","enterprise","swipkit","orders"].includes(savedUI.view) ? savedUI.view : "list");
   const [showPullList,   setShowPullList]   = useState(false);
   const [copiedId,       setCopiedId]       = useState(null);
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
@@ -4410,6 +4421,8 @@ export default function App() {
     }).catch(() => { try { const s = localStorage.getItem(PAST_DEALS_KEY); if (s) setPastDeals(JSON.parse(s)); } catch {} });
     // エンタープライズ管理（大手）
     idbKvGet("enterprise").then(d => { if (Array.isArray(d) && d.length) setEnterprise(d); }).catch(()=>{});
+    // SWIPKit 営業リスト
+    idbKvGet("swipkit").then(d => { if (Array.isArray(d) && d.length) setSwipkit(d); }).catch(()=>{});
     // 受注案件管理
     idbKvGet("orders").then(d => { if (Array.isArray(d) && d.length) setOrders(d); }).catch(()=>{
       try { const s = localStorage.getItem("sales_mgr_orders"); if (s) setOrders(JSON.parse(s)); } catch {}
@@ -4477,6 +4490,7 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem(SETTINGS_KEY,   JSON.stringify(settings));  } catch {} }, [settings]);
   useEffect(() => { idbKvSet("pastDeals", pastDeals).catch(() => { try { localStorage.setItem(PAST_DEALS_KEY, JSON.stringify(pastDeals)); } catch {} }); }, [pastDeals]);
   useEffect(() => { idbKvSet("enterprise", enterprise).catch(()=>{}); }, [enterprise]);
+  useEffect(() => { idbKvSet("swipkit", swipkit).catch(()=>{}); }, [swipkit]);
   useEffect(() => { idbKvSet("orders", orders).catch(() => { try { localStorage.setItem("sales_mgr_orders", JSON.stringify(orders)); } catch {} }); }, [orders]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
   // UI 状態（列設定・ビュー・ソート）を保存
@@ -4486,12 +4500,20 @@ export default function App() {
 
   // ── Favicon ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!settings.favicon) return;
     let link = document.querySelector("link[rel~='icon']");
     if (!link) { link = document.createElement("link"); link.rel = "icon"; document.head.appendChild(link); }
-    link.type = "image/png";
-    link.setAttribute("sizes", "512x512");
-    link.href = settings.favicon;
+    if (settings.favicon) {
+      link.type = "image/png";
+      link.setAttribute("sizes", "512x512");
+      link.href = settings.favicon;
+    } else {
+      // 既定: SWIPKit のSロゴ（SVG）をファビコンに
+      link.type = "image/svg+xml";
+      link.removeAttribute("sizes");
+      link.href = "data:image/svg+xml," + encodeURIComponent(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><g fill="none" stroke="#5B5BF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"><path d="M22 32 H64 V58"/><path d="M54 48 L64 58 L74 48"/><path d="M74 64 H32 V38"/><path d="M42 48 L32 38 L22 48"/></g></svg>`
+      );
+    }
   }, [settings.favicon]);
 
   // ── 自動バックアップ ───────────────────────────────────────────────────────────
@@ -4981,10 +5003,11 @@ export default function App() {
 
         {/* ── Page tabs ── */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
-          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンプラ"],["orders","🛍️ 受注案件"]].map(([v,label])=>(
+          {[["list","📋 リスト"],["analysis","📊 レポート"],["pastmgmt","📂 過去商談"],["enterprise","🏢 エンプラ"],["swipkit","SWIPKit"],["orders","🛍️ 受注案件"]].map(([v,label])=>(
             <button key={v} onClick={()=>setView(v)}
-              className={`px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
+              className={`flex items-center gap-1 px-4 py-1.5 text-xs font-semibold rounded-lg transition-colors
                 ${view===v ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+              {v==="swipkit" && <SwipkitMark className="w-3.5 h-3.5" />}
               {label}
             </button>
           ))}
@@ -5000,6 +5023,11 @@ export default function App() {
 
         {/* ── エンタープライズ管理 ── */}
         {view==="enterprise" && <PastMgmtView pastMgmt={enterprise} setPastMgmt={setEnterprise} records={records}
+          onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
+          onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
+
+        {/* ── SWIPKit 営業リスト ── */}
+        {view==="swipkit" && <PastMgmtView pastMgmt={swipkit} setPastMgmt={setSwipkit} records={records}
           onGoToList={name => { setView("list"); setSearch(name); setPage(1); }}
           onAddToList={addPastDealToList} onBeforeImport={snapshotForRollback} />}
 
