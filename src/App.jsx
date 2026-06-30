@@ -3844,6 +3844,15 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
             Excelインポート
             <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} disabled={loading}/>
           </label>
+          {/* FMT（テンプレート）ダウンロード */}
+          <button onClick={() => downloadTemplate("sales")}
+            title="記入用のCSVフォーマットをダウンロード（記入後そのままインポート可）"
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-600 px-3 py-2 rounded-lg text-xs font-medium transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m-9 7h12a2 2 0 002-2V7a2 2 0 00-2-2h-5l-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            FMTダウンロード
+          </button>
           {/* 列設定 */}
           <div className="relative" ref={colDropRef}>
             <button onClick={() => setShowColDrop(v=>!v)}
