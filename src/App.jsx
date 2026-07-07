@@ -4582,7 +4582,17 @@ export default function App() {
     return true;
   });
 
-  const sortedFiltered = sortKey
+  const storeNum = v => parseInt(String(v ?? "").replace(/,/g, "")) || 0;
+  const sortedFiltered = sortKey === "assigneeStore"
+    // プリセット: 担当者あり優先 → 店舗数の多い順
+    ? [...filtered].sort((a, b) => {
+        const aA = String(a.assignee || "").trim() ? 1 : 0;
+        const bA = String(b.assignee || "").trim() ? 1 : 0;
+        if (aA !== bA) return bA - aA;                 // 担当者ありを先頭に
+        const ds = storeNum(b.storeCount) - storeNum(a.storeCount); // 店舗数 降順
+        return ds !== 0 ? ds : String(a.id).localeCompare(String(b.id));
+      })
+    : sortKey
     ? [...filtered].sort((a, b) => {
         let va = a[sortKey] ?? "", vb = b[sortKey] ?? "";
         let cmp;
@@ -5316,6 +5326,13 @@ export default function App() {
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
                 ${logoMissingOnly ? "bg-violet-600 text-white border-violet-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
               🚫🖼️ ロゴ無しのみ
+            </button>
+            {/* 並び替え: 担当者あり優先→店舗数の多い順 */}
+            <button onClick={() => { setSortKey(k => k === "assigneeStore" ? null : "assigneeStore"); setPage(1); }}
+              title="担当者ありを先頭にし、店舗数の多い順に並び替え"
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap
+                ${sortKey === "assigneeStore" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
+              👤×🏬 担当者あり・店舗数順
             </button>
           </div>
         </div>
