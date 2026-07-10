@@ -4943,6 +4943,16 @@ export default function App() {
     });
   }, [syncToAPI, pushUndo]);
 
+  // 行クイックアクション: 架電日を本日にし、patch（状況・不在理由等）をワンクリック反映
+  const quickUpdate = useCallback((id, patch) => {
+    pushUndo();
+    setRecords(p => {
+      const next = p.map(r => r.id === id ? clampNextCall({ ...r, lastCallDate: getToday(), ...patch, updatedAt: nowIso() }) : r);
+      syncToAPI(next);
+      return next;
+    });
+  }, [syncToAPI, pushUndo]);
+
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(id);
@@ -5411,7 +5421,7 @@ export default function App() {
                       </span>
                     </th>
                   ))}
-                  <th className="w-[80px] px-3 py-3 text-left text-xs font-semibold text-slate-500 bg-slate-50">操作</th>
+                  <th className="w-[168px] px-2 py-3 text-left text-xs font-semibold text-slate-500 bg-slate-50">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -5633,11 +5643,20 @@ export default function App() {
                         </td>
                       );
                     })}
-                    <td className="w-[80px] px-3 py-2.5 whitespace-nowrap align-middle">
-                      <button onClick={() => setEditRec(rec)}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-                        編集
-                      </button>
+                    <td className="w-[168px] px-2 py-2.5 whitespace-nowrap align-middle">
+                      <div className="flex items-center gap-1">
+                        {/* 行クイックアクション（架電日=本日＋状況をワンクリック更新） */}
+                        <button onClick={() => quickUpdate(rec.id, {})} title="架電記録（架電日を本日に）"
+                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 text-xs">📞</button>
+                        <button onClick={() => quickUpdate(rec.id, { status: "7.コネクト（無）" })} title="コネクト（無）＋本日架電"
+                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 text-xs">✅</button>
+                        <button onClick={() => quickUpdate(rec.id, { status: "4.受付カット" })} title="受付カット＋本日架電"
+                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-amber-200 text-amber-600 hover:bg-amber-50 text-xs">⛔</button>
+                        <button onClick={() => quickUpdate(rec.id, { status: "8.不要" })} title="不要＋本日架電"
+                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 text-xs">🚫</button>
+                        <button onClick={() => setEditRec(rec)}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium ml-0.5">編集</button>
+                      </div>
                     </td>
                   </tr>
                   );
