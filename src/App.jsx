@@ -3739,7 +3739,9 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
     const doProcess = (rows) => {
       setTimeout(() => {
         try {
-          const headers = rows[0];
+          // 小田切形式（1行目が集計行）を自動検知してヘッダー行を1つ下げる
+          const headerIdx = isAggregateRow((rows[0]||[]).map(c => String(c ?? ""))) ? 1 : 0;
+          const headers = rows[headerIdx];
           const map = mapPastMgmtHeaders(headers);
           // 通常のsalesヘッダーも試みる
           const salesMap = mapSalesHeaders(headers);
@@ -3750,7 +3752,7 @@ function PastMgmtView({ pastMgmt, setPastMgmt, records, onGoToList, onAddToList,
           }
           const items = []; let skipped = 0;
           const g = (idx, row) => idx !== undefined ? String(row[idx]??'').trim() : "";
-          for (const row of rows.slice(1)) {
+          for (const row of rows.slice(headerIdx + 1)) {
             if (row.every(c => !String(c).trim())) continue;
             const name = String(row[compIdx]??"").trim();
             if (!name) { skipped++; continue; }
