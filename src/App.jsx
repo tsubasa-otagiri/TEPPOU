@@ -5645,9 +5645,9 @@ export default function App() {
                     })}
                     <td className="w-[168px] px-2 py-2.5 whitespace-nowrap align-middle">
                       <div className="flex items-center gap-1">
-                        {/* 行クイックアクション（架電日=本日＋状況をワンクリック更新） */}
-                        <button onClick={() => quickUpdate(rec.id, {})} title="架電記録（架電日を本日に）"
-                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-slate-200 text-slate-500 hover:bg-slate-100 text-xs">📞</button>
+                        {/* 行クイックアクション（架電日=本日＋状況/不在理由をワンクリック更新） */}
+                        <button onClick={() => quickUpdate(rec.id, { absenceReason: "席外" })} title="席外＋本日架電（当日再架電アラート対象）"
+                          className="w-6 h-6 inline-flex items-center justify-center rounded border border-sky-200 text-sky-600 hover:bg-sky-50 text-xs">📞</button>
                         <button onClick={() => quickUpdate(rec.id, { status: "7.コネクト（無）" })} title="コネクト（無）＋本日架電"
                           className="w-6 h-6 inline-flex items-center justify-center rounded border border-blue-200 text-blue-600 hover:bg-blue-50 text-xs">✅</button>
                         <button onClick={() => quickUpdate(rec.id, { status: "4.受付カット" })} title="受付カット＋本日架電"
