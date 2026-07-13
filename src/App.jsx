@@ -305,13 +305,13 @@ const DEFAULT_VISIBLE_COLS = [
 // メインリストの列幅（％）。w-full + table-fixed と組み合わせ、表示中の列が常に1画面に
 // 収まるよう比率で配分する（横スクロールを出さない）。状況など重要列は見切れない幅を確保。
 const LIST_COL_W = {
-  companyName:"w-[14%]", memo:"w-[12%]", status:"w-[11%]",
-  email:"w-[12%]", gbpSiteUrl:"w-[12%]", hpSite:"w-[10%]",
-  nextCallDate:"w-[10%]", lastCallDate:"w-[9%]", leadAddedDate:"w-[9%]",
-  leadSource:"w-[9%]", phone:"w-[9%]", refusalReason:"w-[9%]", gbpManagement:"w-[9%]",
-  industry:"w-[8%]", absenceReason:"w-[8%]", assignee:"w-[8%]",
-  createdBy:"w-[8%]", importMonth:"w-[8%]", department:"w-[8%]",
-  storeCount:"w-[7%]",
+  companyName:"w-[20%]", memo:"w-[11%]", status:"w-[10%]",
+  email:"w-[11%]", gbpSiteUrl:"w-[11%]", hpSite:"w-[9%]",
+  nextCallDate:"w-[8%]", lastCallDate:"w-[8%]", leadAddedDate:"w-[8%]",
+  leadSource:"w-[8%]", phone:"w-[8%]", refusalReason:"w-[8%]", gbpManagement:"w-[8%]",
+  industry:"w-[7%]", absenceReason:"w-[7%]", assignee:"w-[7%]",
+  createdBy:"w-[7%]", importMonth:"w-[7%]", department:"w-[7%]",
+  storeCount:"w-[6%]",
 };
 const listColW = key => LIST_COL_W[key] || "w-[6%]";
 
@@ -5421,7 +5421,7 @@ export default function App() {
                       </span>
                     </th>
                   ))}
-                  <th className="w-[168px] px-2 py-3 text-left text-xs font-semibold text-slate-500 bg-slate-50">操作</th>
+                  <th className="w-[150px] px-2 py-3 text-left text-xs font-semibold text-slate-500 bg-slate-50">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -5556,7 +5556,7 @@ export default function App() {
                                 )}
                               </span>
                               <CompanyLogo logoUrl={rec.logoUrl} url={rec.hpSite} name={val} />
-                              <span className="font-medium text-xs whitespace-nowrap truncate max-w-40">{val || "—"}</span>
+                              <span className="font-medium text-sm whitespace-nowrap truncate flex-1 min-w-0" title={String(val||"")}>{val || "—"}</span>
                               {pd && (
                                 <span className="shrink-0 text-xs px-1.5 py-0.5 rounded-full font-semibold bg-purple-100 text-purple-700 border border-purple-300 whitespace-nowrap">
                                   📜{pd.pastStatus || "過去商談あり"}
@@ -5643,8 +5643,8 @@ export default function App() {
                         </td>
                       );
                     })}
-                    <td className="w-[168px] px-2 py-2.5 whitespace-nowrap align-middle">
-                      <div className="flex items-center gap-1">
+                    <td className="w-[150px] px-2 py-2.5 whitespace-nowrap align-middle">
+                      <div className="flex items-center gap-0.5">
                         {/* 行クイックアクション（架電日=本日＋状況/不在理由をワンクリック更新） */}
                         <button onClick={() => quickUpdate(rec.id, { absenceReason: "席外" })} title="席外＋本日架電（当日再架電アラート対象）"
                           className="w-6 h-6 inline-flex items-center justify-center rounded border border-sky-200 text-sky-600 hover:bg-sky-50 text-xs">📞</button>
