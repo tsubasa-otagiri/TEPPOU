@@ -203,9 +203,12 @@ const DONE_STATUSES  = ["8.不要","8.当社契約"];
 // ── 商材モード（SwipKit ⇔ MEO）───────────────────────────────────────────────
 // 企業マスタ（社名/電話/HP/ロゴ/店舗数等）は共有し、商談の進行状態だけを商材ごとに持つ。
 // モード切替時: 現在の進行状態を products[旧商材] に退避し、products[新商材] を展開。
-// 新商材側が未作成なら「架電日・次回架電日以外を引き継いで」初期化（新たに販売開始できる）。
+// 新商材側が未作成なら「未架電」から開始（MEOの状況は products.meo に残るので消えない）。
 const PRODUCT_MODES = { swipkit: "SwipKit", meo: "MEO" };
 const PRODUCT_FIELDS = ["status","lastCallDate","nextCallDate","absenceReason","refusalReason"];
+// 新しい商材を売り始めるときの初期状態（他商材の状況は引き継がない）
+const PRODUCT_BLANK = { status:"未架電", lastCallDate:"", nextCallDate:"", absenceReason:"", refusalReason:"" };
+const otherProduct = m => (m === "swipkit" ? "meo" : "swipkit");
 
 // ── 再アプローチステータス ─────────────────────────────────────────────────────
 const REAPPROACH_STATUS = {
@@ -270,6 +273,7 @@ const ALL_COLUMNS = [
   { key:"lastCallDate",  label:"架電日",                              required:false, w:"w-[140px]" },
   { key:"nextCallDate",  label:"次回架電日",                          required:false, w:"w-[150px]" },
   { key:"status",        label:"状況",                                required:false, w:"w-[150px]" },
+  { key:"otherStatus",   label:"他商材状況",                          required:false, w:"w-[150px]" },
   { key:"industry",      label:"業種",                                required:false, w:"w-[110px]" },
   { key:"leadSource",    label:"ソース",                              required:false, w:"w-[130px]" },
   { key:"leadAddedDate", label:"リード追加日",                        required:false, w:"w-[140px]" },
@@ -299,13 +303,13 @@ const ALL_COLUMNS = [
 ];
 
 const DEFAULT_VISIBLE_COLS = [
-  "companyName","lastCallDate","nextCallDate","status","absenceReason","storeCount","phone","assignee","memo",
+  "companyName","lastCallDate","nextCallDate","status","otherStatus","absenceReason","storeCount","phone","assignee","memo",
 ];
 
 // メインリストの列幅（％）。w-full + table-fixed と組み合わせ、表示中の列が常に1画面に
 // 収まるよう比率で配分する（横スクロールを出さない）。状況など重要列は見切れない幅を確保。
 const LIST_COL_W = {
-  companyName:"w-[20%]", memo:"w-[11%]", status:"w-[10%]",
+  companyName:"w-[20%]", memo:"w-[9%]", status:"w-[10%]", otherStatus:"w-[9%]",
   email:"w-[11%]", gbpSiteUrl:"w-[11%]", hpSite:"w-[9%]",
   nextCallDate:"w-[8%]", lastCallDate:"w-[8%]", leadAddedDate:"w-[8%]",
   leadSource:"w-[8%]", phone:"w-[8%]", refusalReason:"w-[8%]", gbpManagement:"w-[8%]",
@@ -4402,7 +4406,7 @@ export default function App() {
 
   // ── 商材モード切替（SwipKit ⇔ MEO）────────────────────────────────────────────
   // 現在の進行状態（状況/架電日/次回架電日/不在理由/断り理由）を products[現商材] へ退避し、
-  // 切替先の進行状態を展開。切替先が初回なら架電日・次回架電日だけ空にして引き継ぐ。
+  // 切替先の進行状態を展開。切替先が初回なら「未架電」から開始（他商材の状況は引き継がない）。
   const switchProduct = useCallback((to) => {
     if (to === productMode) return;
     const from = productMode;
@@ -4414,7 +4418,7 @@ export default function App() {
         PRODUCT_FIELDS.forEach(k => { cur[k] = r[k] ?? ""; });
         const incoming = (r.products && r.products[to])
           ? r.products[to]
-          : { ...cur, lastCallDate: "", nextCallDate: "" }; // 初回: 架電日以外を引き継ぎ
+          : { ...PRODUCT_BLANK }; // 初回: 商材ごとに状況を分けるため未架電から
         return { ...r, ...incoming, products: { ...(r.products || {}), [from]: cur } };
       });
       syncToAPI(next);
@@ -4539,6 +4543,20 @@ export default function App() {
   useEffect(() => { idbKvSet("swipkit", swipkit).catch(()=>{}); }, [swipkit]);
   useEffect(() => { idbKvSet("orders", orders).catch(() => { try { localStorage.setItem("sales_mgr_orders", JSON.stringify(orders)); } catch {} }); }, [orders]);
   useEffect(() => { idbPastPutAll(pastMgmt).catch(() => { try { localStorage.setItem(PAST_MGMT_KEY, JSON.stringify(pastMgmt)); } catch {} }); }, [pastMgmt]);
+  // 「他商材状況」列は後から追加したため、保存済みの表示列へ一度だけ差し込む（以降は自由に消せる）
+  useEffect(() => {
+    const FLAG = "teppou_col_otherstatus_v1";
+    try { if (localStorage.getItem(FLAG)) return; } catch { return; }
+    setVisibleCols(p => {
+      if (p.includes("otherStatus")) return p;
+      const i = p.indexOf("status");
+      const n = [...p];
+      n.splice(i >= 0 ? i + 1 : n.length, 0, "otherStatus");
+      return n;
+    });
+    try { localStorage.setItem(FLAG, "1"); } catch {}
+  }, []);
+
   // UI 状態（列設定・ビュー・ソート）を保存
   useEffect(() => {
     try { localStorage.setItem(UI_KEY, JSON.stringify({ visibleCols, view, sortKey, sortDir, productMode })); } catch {}
@@ -4952,6 +4970,31 @@ export default function App() {
       return next;
     });
   }, [syncToAPI, pushUndo]);
+
+  // ── SwipKit 状況の初期化 ──────────────────────────────────────────────────────
+  // MEO から引き継いでしまった状況をリセットし、SwipKit を未架電から始められるようにする。
+  // 退避先 products.meo が無いレコードは、消す前に現在値を MEO として保存する（MEO状況は必ず残す）。
+  // 注意: pushUndo より後に定義すること（依存配列の評価が TDZ に掛かるため）。
+  const resetSwipkitProgress = useCallback(() => {
+    if (productMode !== "swipkit") return;
+    if (!window.confirm(
+      `SwipKitの「状況・架電日・次回架電日・不在理由・断り理由」を未架電に初期化します。\n` +
+      `MEOの状況はそのまま保持され、「MEO状況」列で確認できます。\n\n` +
+      `対象: ${records.length}社\n\n実行しますか？（↩️戻る で取り消せます）`
+    )) return;
+    pushUndo();
+    setRecords(p => {
+      const next = p.map(r => {
+        const cur = {};
+        PRODUCT_FIELDS.forEach(k => { cur[k] = r[k] ?? ""; });
+        const meo = (r.products && r.products.meo) ? r.products.meo : cur; // MEO退避が無ければ現在値を退避
+        return { ...r, ...PRODUCT_BLANK, products: { ...(r.products || {}), meo }, updatedAt: nowIso() };
+      });
+      syncToAPI(next);
+      return next;
+    });
+    setPage(1);
+  }, [productMode, records.length, syncToAPI, pushUndo]);
 
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -5390,6 +5433,14 @@ export default function App() {
                 ${sortKey === "assigneeStore" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
               👤×🏬 担当者あり・店舗数順
             </button>
+            {/* SwipKitモードのみ: MEOから引き継いだ状況を未架電に戻す（MEO状況は products.meo に保持） */}
+            {productMode === "swipkit" && (
+              <button onClick={resetSwipkitProgress}
+                title="SwipKitの状況・架電日を未架電に初期化します（MEOの状況は保持されます）"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-300 hover:bg-slate-50">
+                🧹 SwipKit状況を初期化
+              </button>
+            )}
           </div>
         </div>
 
@@ -5414,7 +5465,10 @@ export default function App() {
                       }}
                       className={`${listColW(col.key)} px-3 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap cursor-pointer hover:bg-slate-100 transition-colors bg-slate-50`}>
                       <span className="flex items-center gap-1">
-                        <span className="truncate">{col.label}</span>
+                        {/* 他商材状況は現在のモードに応じてラベルを出し分け（SwipKit中なら「MEO状況」） */}
+                        <span className="truncate">
+                          {col.key === "otherStatus" ? `${PRODUCT_MODES[otherProduct(productMode)]}状況` : col.label}
+                        </span>
                         {sortKey === col.key
                           ? <span className="text-blue-500 shrink-0">{sortDir==="asc" ? "▲" : "▼"}</span>
                           : <span className="text-slate-300 shrink-0">⇅</span>}
@@ -5447,7 +5501,9 @@ export default function App() {
                         className="rounded border-slate-300 text-blue-600" />
                     </td>
                     {visibleDefs.map(col => {
-                      const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key && col.key !== "companyName";
+                      // 他商材状況は参照専用（編集は各商材モードに切り替えて行う）
+                      const isEditing = editingCell?.id === rec.id && editingCell?.key === col.key
+                        && col.key !== "companyName" && col.key !== "otherStatus";
                       const openEdit  = () => setEditingCell({ id: rec.id, key: col.key });
                       const save      = (val) => saveInlineValue(rec.id, col.key, val);
                       const cancel    = () => setEditingCell(null);
@@ -5573,6 +5629,19 @@ export default function App() {
                           );
                         } else if (col.key === "status") {
                           viewEl = <span onClick={openEdit} className="cursor-pointer"><StatusBadge status={val}/></span>;
+                        } else if (col.key === "otherStatus") {
+                          // 他商材（SwipKit中ならMEO）の状況を参照専用で表示。架電日も添えて経緯が分かるように
+                          const other  = otherProduct(productMode);
+                          const snap   = (rec.products && rec.products[other]) || null;
+                          const oStat  = snap?.status || "";
+                          const oCall  = normDate(snap?.lastCallDate) || "";
+                          viewEl = oStat
+                            ? <span className="inline-flex flex-col gap-0.5 opacity-70"
+                                title={`${PRODUCT_MODES[other]}の状況${oCall ? `（架電日 ${oCall}）` : ""}`}>
+                                <StatusBadge status={oStat}/>
+                                {oCall && <span className="text-[10px] text-slate-400 leading-none">📞{oCall.slice(5)}</span>}
+                              </span>
+                            : empty;
                         } else if (col.key === "leadSource") {
                           viewEl = val
                             ? <span onClick={openEdit} className="cursor-pointer hover:opacity-80 transition-opacity"><LeadSourceBadge source={val}/></span>
