@@ -4975,37 +4975,6 @@ export default function App() {
     });
   }, [syncToAPI, pushUndo]);
 
-  // ── SwipKit 状況の初期化 ──────────────────────────────────────────────────────
-  // MEO から引き継いでしまった状況を「なし」に戻す。対象は SwipKit の架電日が無い企業のみで、
-  // SwipKit で実際に架電済みの企業（架電日あり）はそのまま維持する。
-  // 退避先 products.meo が無いレコードは、消す前に現在値を MEO として保存する（MEO状況は必ず残す）。
-  // 注意: pushUndo より後に定義すること（依存配列の評価が TDZ に掛かるため）。
-  const resetSwipkitProgress = useCallback(() => {
-    if (productMode !== "swipkit") return;
-    const targets = records.filter(r => !String(r.lastCallDate || "").trim());
-    if (!targets.length) { window.alert("架電日の無い企業はありません。"); return; }
-    if (!window.confirm(
-      `架電日の無い企業のSwipKit状況を「なし」にします（不在理由・断り理由・次回架電日も消去）。\n` +
-      `SwipKitで架電済みの企業（架電日あり）は変更しません。\n` +
-      `MEOの状況はそのまま保持され、「MEO状況」列で確認できます。\n\n` +
-      `対象: ${targets.length}社 / 全${records.length}社\n\n実行しますか？（↩️戻る で取り消せます）`
-    )) return;
-    const ids = new Set(targets.map(r => r.id));
-    pushUndo();
-    setRecords(p => {
-      const next = p.map(r => {
-        if (!ids.has(r.id)) return r;
-        const cur = {};
-        PRODUCT_FIELDS.forEach(k => { cur[k] = r[k] ?? ""; });
-        const meo = (r.products && r.products.meo) ? r.products.meo : cur; // MEO退避が無ければ現在値を退避
-        return { ...r, ...PRODUCT_BLANK, products: { ...(r.products || {}), meo }, updatedAt: nowIso() };
-      });
-      syncToAPI(next);
-      return next;
-    });
-    setPage(1);
-  }, [productMode, records, syncToAPI, pushUndo]);
-
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedId(id);
@@ -5443,14 +5412,6 @@ export default function App() {
                 ${sortKey === "assigneeStore" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
               👤×🏬 担当者あり・店舗数順
             </button>
-            {/* SwipKitモードのみ: 架電日の無い企業の状況を「なし」に戻す（MEO状況は products.meo に保持） */}
-            {productMode === "swipkit" && (
-              <button onClick={resetSwipkitProgress}
-                title="架電日の無い企業のSwipKit状況を「なし」に戻します（架電済みとMEOの状況はそのまま）"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-300 hover:bg-slate-50">
-                🧹 架電日無しの状況をなしに
-              </button>
-            )}
           </div>
         </div>
 
