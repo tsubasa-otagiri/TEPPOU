@@ -193,6 +193,10 @@ const STATUS_ORDER = [
 ];
 const statusOrderIdx = s => { const i = STATUS_ORDER.indexOf(s); return i === -1 ? 998 : i; };
 
+// 状況「なし」（空文字）を含む全キー。SwipKit など未着手を「なし」で持つため、
+// STATUS_CFG のキーだけで絞り込むと「なし」のレコードが消えてしまう。
+const STATUS_KEYS = [...Object.keys(STATUS_CFG), ""];
+
 // 「架電」プリセット（ステータス絞り込み）: コネクト（無）・並・優先・高確度
 const CALL_PRESET_STATUSES = ["7.コネクト（無）","3.並","2.優先","1.高確度"];
 
@@ -206,8 +210,8 @@ const DONE_STATUSES  = ["8.不要","8.当社契約"];
 // 新商材側が未作成なら「未架電」から開始（MEOの状況は products.meo に残るので消えない）。
 const PRODUCT_MODES = { swipkit: "SwipKit", meo: "MEO" };
 const PRODUCT_FIELDS = ["status","lastCallDate","nextCallDate","absenceReason","refusalReason"];
-// 新しい商材を売り始めるときの初期状態（他商材の状況は引き継がない）
-const PRODUCT_BLANK = { status:"未架電", lastCallDate:"", nextCallDate:"", absenceReason:"", refusalReason:"" };
+// 新しい商材を売り始めるときの初期状態（他商材の状況は引き継がない）。状況は「なし」から。
+const PRODUCT_BLANK = { status:"", lastCallDate:"", nextCallDate:"", absenceReason:"", refusalReason:"" };
 const otherProduct = m => (m === "swipkit" ? "meo" : "swipkit");
 
 // ── 再アプローチステータス ─────────────────────────────────────────────────────
@@ -4291,7 +4295,7 @@ export default function App() {
   const [settings,       setSettings]       = useState({ logo:null, favicon:null, backupTimes:["10:00","14:00","18:00"] });
   const [showHelp,       setShowHelp]       = useState(false);
   const [search,         setSearch]         = useState("");
-  const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(Object.keys(STATUS_CFG)));
+  const [statusFilterSet, setStatusFilterSet] = useState(() => new Set(STATUS_KEYS));
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [excludeTodayCalled, setExcludeTodayCalled] = useState(false); // 今日架電したリストを除外
   const [leadSourceFilter, setLeadSourceFilter] = useState("all"); // ソース絞り込み
@@ -4318,7 +4322,7 @@ export default function App() {
   const [editingCell,    setEditingCell]    = useState(null); // { id, key }
   const [sortKey,        setSortKey]        = useState(savedUI.sortKey ?? null);
   const [sortDir,        setSortDir]        = useState(savedUI.sortDir || "asc");
-  const ALL_STATUS_KEYS = Object.keys(STATUS_CFG);
+  const ALL_STATUS_KEYS = STATUS_KEYS; // 「なし」（""）を含む
 
   // STATUS_CFG に追加されたキー（未架電など）が filterSet に入っていない場合に自動補完
   useEffect(() => {
@@ -4888,7 +4892,7 @@ export default function App() {
       else if (!seen.has(key)) added++;
       seen.add(key);
     });
-    setStatusFilterSet(new Set(Object.keys(STATUS_CFG)));
+    setStatusFilterSet(new Set(STATUS_KEYS));
     setView("list");
     setPage(1);
     return { added, updated };
@@ -4904,7 +4908,7 @@ export default function App() {
     snapshotForRollback(); // インポート前に自動退避
     setRecords(p => { const next = [...p, ...recs]; syncToAPI(next); return next; });
     // インポート後: フィルター・検索・ページをすべてリセットして確実に表示
-    setStatusFilterSet(new Set(Object.keys(STATUS_CFG)));
+    setStatusFilterSet(new Set(STATUS_KEYS));
     setSearch("");
     setAssigneeFilter("all");
     setSortKey(null);
@@ -4972,19 +4976,25 @@ export default function App() {
   }, [syncToAPI, pushUndo]);
 
   // ── SwipKit 状況の初期化 ──────────────────────────────────────────────────────
-  // MEO から引き継いでしまった状況をリセットし、SwipKit を未架電から始められるようにする。
+  // MEO から引き継いでしまった状況を「なし」に戻す。対象は SwipKit の架電日が無い企業のみで、
+  // SwipKit で実際に架電済みの企業（架電日あり）はそのまま維持する。
   // 退避先 products.meo が無いレコードは、消す前に現在値を MEO として保存する（MEO状況は必ず残す）。
   // 注意: pushUndo より後に定義すること（依存配列の評価が TDZ に掛かるため）。
   const resetSwipkitProgress = useCallback(() => {
     if (productMode !== "swipkit") return;
+    const targets = records.filter(r => !String(r.lastCallDate || "").trim());
+    if (!targets.length) { window.alert("架電日の無い企業はありません。"); return; }
     if (!window.confirm(
-      `SwipKitの「状況・架電日・次回架電日・不在理由・断り理由」を未架電に初期化します。\n` +
+      `架電日の無い企業のSwipKit状況を「なし」にします（不在理由・断り理由・次回架電日も消去）。\n` +
+      `SwipKitで架電済みの企業（架電日あり）は変更しません。\n` +
       `MEOの状況はそのまま保持され、「MEO状況」列で確認できます。\n\n` +
-      `対象: ${records.length}社\n\n実行しますか？（↩️戻る で取り消せます）`
+      `対象: ${targets.length}社 / 全${records.length}社\n\n実行しますか？（↩️戻る で取り消せます）`
     )) return;
+    const ids = new Set(targets.map(r => r.id));
     pushUndo();
     setRecords(p => {
       const next = p.map(r => {
+        if (!ids.has(r.id)) return r;
         const cur = {};
         PRODUCT_FIELDS.forEach(k => { cur[k] = r[k] ?? ""; });
         const meo = (r.products && r.products.meo) ? r.products.meo : cur; // MEO退避が無ければ現在値を退避
@@ -4994,7 +5004,7 @@ export default function App() {
       return next;
     });
     setPage(1);
-  }, [productMode, records.length, syncToAPI, pushUndo]);
+  }, [productMode, records, syncToAPI, pushUndo]);
 
   const copyCompanyName = useCallback((text, id) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -5246,7 +5256,7 @@ export default function App() {
                         ? `${s.bg??"bg-gray-100"} ${s.text??"text-gray-600"} ${s.border??"border-gray-300"}`
                         : "bg-white text-slate-300 border-slate-200"}`}>
                     <span className={`w-2 h-2 rounded-full transition-colors ${active ? (s.dot??"bg-gray-400") : "bg-slate-200"}`} />
-                    <span className={active ? "" : "line-through"}>{s.status}</span>
+                    <span className={active ? "" : "line-through"}>{s.status || "なし"}</span>
                     <span className={`font-bold ${active ? "" : "text-slate-200"}`}>{s.count}</span>
                   </button>
                 );
@@ -5433,12 +5443,12 @@ export default function App() {
                 ${sortKey === "assigneeStore" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}>
               👤×🏬 担当者あり・店舗数順
             </button>
-            {/* SwipKitモードのみ: MEOから引き継いだ状況を未架電に戻す（MEO状況は products.meo に保持） */}
+            {/* SwipKitモードのみ: 架電日の無い企業の状況を「なし」に戻す（MEO状況は products.meo に保持） */}
             {productMode === "swipkit" && (
               <button onClick={resetSwipkitProgress}
-                title="SwipKitの状況・架電日を未架電に初期化します（MEOの状況は保持されます）"
+                title="架電日の無い企業のSwipKit状況を「なし」に戻します（架電済みとMEOの状況はそのまま）"
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap bg-white text-slate-600 border-slate-300 hover:bg-slate-50">
-                🧹 SwipKit状況を初期化
+                🧹 架電日無しの状況をなしに
               </button>
             )}
           </div>
@@ -5524,11 +5534,12 @@ export default function App() {
                       if (isEditing) {
                         if (col.key === "status") {
                           editEl = (
-                            <select autoFocus defaultValue={rec.status}
+                            <select autoFocus defaultValue={rec.status || ""}
                               className={inputCls}
                               onChange={e => save(e.target.value)}
                               onBlur={cancel}
                               onKeyDown={e => e.key === "Escape" && cancel()}>
+                              <option value="">— なし —</option>
                               {Object.keys(STATUS_CFG).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
                           );
